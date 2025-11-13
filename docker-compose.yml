@@ -18,21 +18,110 @@ services:
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:-admin}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:-admin}
       - MEMORY_DB_PATH=/app/mcp_data/memory.db
-      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
+      - OLLAMA_HOST=http://ollama:11434
+      - QDRANT_HOST=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB:-centre_ai}
+      - POSTGRES_USER=${POSTGRES_USER:-centre_ai}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-centre_ai_password}
+      - N8N_HOST=http://n8n:5678
+      - GIT_REPOS_PATH=/app/git_repos
     volumes:
       - ./mcp_data:/app/mcp_data
       - ./logs:/app/logs
+      - ./git_repos:/app/git_repos
     networks:
       - centre-ai-network
     restart: unless-stopped
     depends_on:
       - redis
+      - postgres
+      - qdrant
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: centre-ai-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-centre_ai}
+      - POSTGRES_USER=${POSTGRES_USER:-centre_ai}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-centre_ai_password}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - centre-ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-centre_ai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: centre-ai-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - centre-ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # n8n Workflow Automation with MCP
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: centre-ai-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-admin}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-centre_ai}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER:-centre_ai}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:-centre_ai_password}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-change-this-encryption-key}
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Europe/Berlin
+      - N8N_MCP_SERVER_URL=http://mcp-server:5000
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./n8n-custom:/home/node/.n8n/custom
+    networks:
+      - centre-ai-network
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - mcp-server
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Redis for caching and session storage
   redis:
@@ -52,7 +141,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # Optional: Ollama for local AI models
+  # Ollama for local AI models
   ollama:
     image: ollama/ollama:latest
     container_name: centre-ai-ollama
@@ -80,4 +169,10 @@ volumes:
   redis-data:
     driver: local
   ollama-data:
+    driver: local
+  postgres-data:
+    driver: local
+  qdrant-data:
+    driver: local
+  n8n-data:
     driver: local

@@ -1,6 +1,6 @@
 """
-Centre AI - Flask MCP Server
-Main application entry point
+Centre AI - Flask MCP Server (Extended Version)
+Main application with all features: Git, Code Indexing, Profiles, Conversations
 """
 
 import os
@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 from src.mcp.server import MCPServer
 from src.auth.manager import AuthManager
 from src.memory.store import MemoryStore
+from src.vector.qdrant_client import VectorDB
+from src.indexing.code_indexer import CodeIndexer
+from src.profiles.manager import ProfileManager, ConversationManager, MemoryManager
 import logging
 
 # Load environment variables
@@ -30,7 +33,16 @@ CORS(app)
 # Initialize components
 auth_manager = AuthManager()
 memory_store = MemoryStore()
-mcp_server = MCPServer(memory_store=memory_store)
+vector_db = VectorDB()
+code_indexer = CodeIndexer(vector_db=vector_db)
+profile_manager = ProfileManager()
+conversation_manager = ConversationManager()
+memory_manager = MemoryManager()
+mcp_server = MCPServer(
+    memory_store=memory_store,
+    vector_db=vector_db,
+    code_indexer=code_indexer
+)
 
 
 # ============================================================================
@@ -72,11 +84,20 @@ def get_status():
     """Get server status"""
     return jsonify({
         'status': 'running',
-        'version': '1.0.0',
+        'version': '2.0.0',
         'mcp_server': {
             'initialized': mcp_server.is_initialized(),
             'tools_count': len(mcp_server.list_tools()),
             'memory_items': memory_store.count()
+        },
+        'services': {
+            'vector_db': {
+                'connected': True,
+                'collections': vector_db.list_collections()
+            },
+            'postgres': {
+                'connected': True
+            }
         }
     })
 
@@ -89,7 +110,8 @@ def get_stats():
         'total_requests': mcp_server.get_request_count(),
         'tools_executed': mcp_server.get_execution_count(),
         'memory_usage': memory_store.get_stats(),
-        'active_sessions': mcp_server.get_active_sessions()
+        'active_sessions': mcp_server.get_active_sessions(),
+        'vector_collections': len(vector_db.list_collections())
     })
 
 
@@ -154,71 +176,200 @@ def mcp_execute_tool():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/mcp/memory/store', methods=['POST'])
+# ============================================================================
+# Profile Routes
+# ============================================================================
+
+@app.route('/api/profile', methods=['GET'])
 @require_auth
-def mcp_store_memory():
-    """Store data in memory"""
+def get_profile():
+    """Get user profile"""
+    try:
+        result = profile_manager.get_profile(request.user)
+        return jsonify(result), 200 if result['success'] else 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/profile', methods=['POST'])
+@require_auth
+def create_or_update_profile():
+    """Create or update user profile"""
     try:
         data = request.get_json()
-        if not data or 'key' not in data or 'value' not in data:
-            return jsonify({'error': 'key and value are required'}), 400
+        result = profile_manager.create_or_update_profile(
+            user_id=request.user,
+            full_name=data.get('full_name'),
+            email=data.get('email'),
+            bio=data.get('bio'),
+            preferences=data.get('preferences'),
+            metadata=data.get('metadata')
+        )
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-        key = data['key']
-        value = data['value']
-        tags = data.get('tags', [])
-        ttl = data.get('ttl')
 
-        result = memory_store.store(
-            key=key,
-            value=value,
-            user=request.user,
-            tags=tags,
-            ttl=ttl
+@app.route('/api/profile/preferences', methods=['PUT'])
+@require_auth
+def update_preferences():
+    """Update user preferences"""
+    try:
+        data = request.get_json()
+        result = profile_manager.update_preferences(
+            user_id=request.user,
+            preferences=data
+        )
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Conversation Routes
+# ============================================================================
+
+@app.route('/api/conversations', methods=['POST'])
+@require_auth
+def create_conversation():
+    """Create new conversation"""
+    try:
+        data = request.get_json()
+        result = conversation_manager.create_conversation(
+            user_id=request.user,
+            session_id=data.get('session_id'),
+            title=data.get('title'),
+            context=data.get('context')
+        )
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/conversations/<session_id>/messages', methods=['POST'])
+@require_auth
+def add_message(session_id):
+    """Add message to conversation"""
+    try:
+        data = request.get_json()
+        result = conversation_manager.add_message(
+            session_id=session_id,
+            role=data.get('role'),
+            content=data.get('content'),
+            metadata=data.get('metadata')
+        )
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/conversations/<session_id>/history', methods=['GET'])
+@require_auth
+def get_conversation_history(session_id):
+    """Get conversation history"""
+    try:
+        limit = int(request.args.get('limit', 100))
+        result = conversation_manager.get_conversation_history(session_id, limit)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/conversations', methods=['GET'])
+@require_auth
+def get_user_conversations():
+    """Get user's conversations"""
+    try:
+        limit = int(request.args.get('limit', 50))
+        result = conversation_manager.get_user_conversations(request.user, limit)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Memory Routes (Long-term)
+# ============================================================================
+
+@app.route('/api/memories', methods=['POST'])
+@require_auth
+def store_memory():
+    """Store long-term memory"""
+    try:
+        data = request.get_json()
+        result = memory_manager.store_memory(
+            user_id=request.user,
+            memory_type=data.get('memory_type'),
+            content=data.get('content'),
+            importance=data.get('importance', 5),
+            tags=data.get('tags'),
+            metadata=data.get('metadata')
+        )
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/memories', methods=['GET'])
+@require_auth
+def get_memories():
+    """Get memories"""
+    try:
+        memory_type = request.args.get('memory_type')
+        tags = request.args.getlist('tags')
+        limit = int(request.args.get('limit', 100))
+
+        result = memory_manager.get_memories(
+            user_id=request.user,
+            memory_type=memory_type,
+            tags=tags if tags else None,
+            limit=limit
+        )
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/memories/<memory_id>', methods=['DELETE'])
+@require_auth
+def delete_memory(memory_id):
+    """Delete memory"""
+    try:
+        result = memory_manager.delete_memory(memory_id)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Code Search Routes
+# ============================================================================
+
+@app.route('/api/code/search', methods=['POST'])
+@require_auth
+def search_code():
+    """Search code semantically"""
+    try:
+        data = request.get_json()
+        query = data.get('query')
+        repo_id = data.get('repo_id')
+        language = data.get('language')
+        limit = data.get('limit', 10)
+
+        results = code_indexer.search_code(
+            query=query,
+            repo_id=repo_id,
+            language=language,
+            limit=limit
         )
 
-        logger.info(f"Memory stored: {key} by {request.user}")
-        return jsonify(result), 200
+        return jsonify({
+            'success': True,
+            'results': results,
+            'count': len(results)
+        }), 200
+
     except Exception as e:
-        logger.error(f"Error storing memory: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/mcp/memory/retrieve', methods=['GET'])
-@require_auth
-def mcp_retrieve_memory():
-    """Retrieve data from memory"""
-    try:
-        key = request.args.get('key')
-        tags = request.args.getlist('tags')
-
-        if key:
-            result = memory_store.retrieve(key, user=request.user)
-        elif tags:
-            result = memory_store.search_by_tags(tags, user=request.user)
-        else:
-            result = memory_store.list_all(user=request.user)
-
-        return jsonify(result), 200
-    except Exception as e:
-        logger.error(f"Error retrieving memory: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/mcp/memory/delete', methods=['DELETE'])
-@require_auth
-def mcp_delete_memory():
-    """Delete data from memory"""
-    try:
-        key = request.args.get('key')
-        if not key:
-            return jsonify({'error': 'key is required'}), 400
-
-        result = memory_store.delete(key, user=request.user)
-        logger.info(f"Memory deleted: {key} by {request.user}")
-
-        return jsonify(result), 200
-    except Exception as e:
-        logger.error(f"Error deleting memory: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -231,7 +382,8 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'service': 'centre-ai-mcp-server'
+        'service': 'centre-ai-mcp-server',
+        'version': '2.0.0'
     }), 200
 
 
@@ -259,7 +411,8 @@ if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5000))
     debug = os.getenv('FLASK_ENV', 'production') == 'development'
 
-    logger.info(f"Starting Centre AI MCP Server on {host}:{port}")
+    logger.info(f"Starting Centre AI MCP Server v2.0.0 on {host}:{port}")
     logger.info(f"Debug mode: {debug}")
+    logger.info("Features: Git, Code Indexing, Profiles, Conversations, Memories")
 
     app.run(host=host, port=port, debug=debug)

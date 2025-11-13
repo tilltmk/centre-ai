@@ -15,8 +15,10 @@ logger = logging.getLogger(__name__)
 class MCPServer:
     """Main MCP Server class"""
 
-    def __init__(self, memory_store=None):
+    def __init__(self, memory_store=None, vector_db=None, code_indexer=None):
         self.memory_store = memory_store
+        self.vector_db = vector_db
+        self.code_indexer = code_indexer
         self.initialized = False
         self.client_info = {}
         self.sessions = {}
@@ -33,12 +35,14 @@ class MCPServer:
         from src.tools.data_tools import DataTools
         from src.tools.web_tools import WebTools
         from src.tools.file_tools import FileTools
+        from src.tools.git_tools import GitTools
 
         # Register all tool categories
         text_tools = TextTools()
         data_tools = DataTools()
         web_tools = WebTools()
         file_tools = FileTools()
+        git_tools = GitTools()
 
         for tool in text_tools.get_tools():
             self.register_tool(tool)
@@ -50,6 +54,9 @@ class MCPServer:
             self.register_tool(tool)
 
         for tool in file_tools.get_tools():
+            self.register_tool(tool)
+
+        for tool in git_tools.get_tools():
             self.register_tool(tool)
 
         logger.info(f"Registered {len(self.tools_registry)} tools")
