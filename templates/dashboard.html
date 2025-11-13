@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Centre AI - MCP Server Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <span class="logo">⚡</span>
+                <span class="brand-name">Centre AI</span>
+            </div>
+            <div class="nav-controls">
+                <button id="theme-toggle" class="icon-btn" title="Dark Mode umschalten">
+                    <span class="theme-icon">🌙</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+
+            <!-- Header Section -->
+            <section class="header-section">
+                <h1 class="page-title">MCP Server Dashboard</h1>
+                <p class="page-subtitle">Model Context Protocol Server für AI Modelle</p>
+            </section>
+
+            <!-- Status Cards -->
+            <section class="cards-grid">
+                <div class="card status-card">
+                    <div class="card-header">
+                        <span class="card-icon">🟢</span>
+                        <h3 class="card-title">Server Status</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="status-indicator">
+                            <span class="status-dot active"></span>
+                            <span class="status-text" id="server-status">Wird geladen...</span>
+                        </div>
+                        <div class="status-details">
+                            <div class="detail-item">
+                                <span class="detail-label">Version:</span>
+                                <span class="detail-value" id="server-version">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Initialisiert:</span>
+                                <span class="detail-value" id="server-initialized">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card stats-card">
+                    <div class="card-header">
+                        <span class="card-icon">🛠️</span>
+                        <h3 class="card-title">Tools</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="stat-number" id="tools-count">-</div>
+                        <p class="stat-label">Verfügbare Tools</p>
+                    </div>
+                </div>
+
+                <div class="card stats-card">
+                    <div class="card-header">
+                        <span class="card-icon">💾</span>
+                        <h3 class="card-title">Gedächtnis</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="stat-number" id="memory-count">-</div>
+                        <p class="stat-label">Gespeicherte Einträge</p>
+                    </div>
+                </div>
+
+                <div class="card stats-card">
+                    <div class="card-header">
+                        <span class="card-icon">⚡</span>
+                        <h3 class="card-title">Anfragen</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="stat-number" id="requests-count">-</div>
+                        <p class="stat-label">Gesamte Anfragen</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tools Section -->
+            <section class="tools-section">
+                <div class="section-header">
+                    <h2 class="section-title">Verfügbare Tools</h2>
+                    <button id="refresh-tools" class="btn btn-secondary">
+                        <span>⟳</span> Aktualisieren
+                    </button>
+                </div>
+                <div class="tools-grid" id="tools-list">
+                    <!-- Tools werden dynamisch geladen -->
+                </div>
+            </section>
+
+            <!-- API Test Section -->
+            <section class="api-section">
+                <div class="card api-card">
+                    <div class="card-header">
+                        <span class="card-icon">🧪</span>
+                        <h3 class="card-title">API Tester</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label for="api-key-input">API Key</label>
+                            <input type="password" id="api-key-input" class="form-input" placeholder="Dein API Key">
+                        </div>
+                        <div class="form-group">
+                            <label for="tool-select">Tool auswählen</label>
+                            <select id="tool-select" class="form-select">
+                                <option value="">-- Tool wählen --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="params-input">Parameter (JSON)</label>
+                            <textarea id="params-input" class="form-textarea" rows="4" placeholder='{"text": "Beispiel"}'></textarea>
+                        </div>
+                        <button id="execute-tool" class="btn btn-primary">Tool ausführen</button>
+                        <div id="api-result" class="api-result" style="display: none;">
+                            <h4>Ergebnis:</h4>
+                            <pre id="api-result-content"></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Documentation Section -->
+            <section class="docs-section">
+                <div class="card docs-card">
+                    <div class="card-header">
+                        <span class="card-icon">📚</span>
+                        <h3 class="card-title">Authentifizierung</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="auth-methods">
+                            <div class="auth-method">
+                                <h4>API Key</h4>
+                                <code>curl -H "X-API-Key: dein-key" http://localhost:5000/mcp/tools/list</code>
+                            </div>
+                            <div class="auth-method">
+                                <h4>Bearer Token</h4>
+                                <code>curl -H "Authorization: Bearer dein-token" http://localhost:5000/mcp/tools/list</code>
+                            </div>
+                            <div class="auth-method">
+                                <h4>Basic Auth</h4>
+                                <code>curl -u username:password http://localhost:5000/mcp/tools/list</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2024 Centre AI - MCP Server Dashboard</p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
