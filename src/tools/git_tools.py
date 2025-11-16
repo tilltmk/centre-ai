@@ -17,7 +17,12 @@ class GitTools:
     """Git repository management tools"""
 
     def __init__(self, repos_path: str = None):
-        self.repos_path = repos_path or os.getenv('GIT_REPOS_PATH', '/app/git_repos')
+        if repos_path:
+            self.repos_path = repos_path
+        else:
+            # Use environment variable or default to user-writable directory
+            default_path = os.path.join(os.path.expanduser('~'), '.centre-ai', 'git_repos')
+            self.repos_path = os.getenv('GIT_REPOS_PATH', default_path)
         os.makedirs(self.repos_path, exist_ok=True)
 
     def get_tools(self) -> List[Dict[str, Any]]:
