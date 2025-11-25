@@ -3,16 +3,17 @@
    ============================================ */
 
 :root {
-    /* Light Mode Colors */
+    /* Light Mode Colors - Pure Apple */
     --bg-primary: #ffffff;
-    --bg-secondary: #f5f5f7;
-    --bg-tertiary: #e8e8ed;
+    --bg-secondary: #fbfbfd;
+    --bg-tertiary: #f5f5f7;
     --text-primary: #1d1d1f;
-    --text-secondary: #6e6e73;
+    --text-secondary: #86868b;
     --accent-primary: #0071e3;
     --accent-hover: #0077ed;
-    --border-color: #d2d2d7;
-    --shadow: rgba(0, 0, 0, 0.1);
+    --border-color: #e5e5e7;
+    --shadow: rgba(0, 0, 0, 0.04);
+    --shadow-hover: rgba(0, 0, 0, 0.08);
     --card-bg: #ffffff;
 
     /* Status Colors */
@@ -22,17 +23,18 @@
 }
 
 [data-theme="dark"] {
-    /* Dark Mode Colors */
+    /* Dark Mode Colors - Pure Black */
     --bg-primary: #000000;
-    --bg-secondary: #1c1c1e;
-    --bg-tertiary: #2c2c2e;
+    --bg-secondary: #000000;
+    --bg-tertiary: #1c1c1e;
     --text-primary: #f5f5f7;
-    --text-secondary: #98989d;
+    --text-secondary: #86868b;
     --accent-primary: #0a84ff;
     --accent-hover: #409cff;
-    --border-color: #38383a;
-    --shadow: rgba(0, 0, 0, 0.3);
-    --card-bg: #1c1c1e;
+    --border-color: #1d1d1f;
+    --shadow: rgba(255, 255, 255, 0.03);
+    --shadow-hover: rgba(255, 255, 255, 0.06);
+    --card-bg: #000000;
 
     /* Status Colors */
     --success: #30d158;
@@ -51,11 +53,15 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
     background: var(--bg-secondary);
     color: var(--text-primary);
-    line-height: 1.6;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    line-height: 1.47059;
+    font-weight: 400;
+    letter-spacing: -0.022em;
+    transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* ============================================
@@ -63,17 +69,17 @@ body {
    ============================================ */
 
 .navbar {
-    background: var(--bg-primary);
     border-bottom: 1px solid var(--border-color);
     position: sticky;
     top: 0;
     z-index: 100;
-    backdrop-filter: blur(20px);
-    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: saturate(180%) blur(20px);
+    background: rgba(255, 255, 255, 0.8);
 }
 
 [data-theme="dark"] .navbar {
-    background: rgba(0, 0, 0, 0.72);
+    background: rgba(0, 0, 0, 0.8);
+    border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
 .nav-container {
@@ -97,8 +103,9 @@ body {
 
 .brand-name {
     font-size: 1.25rem;
-    font-weight: 600;
+    font-weight: 510;
     color: var(--text-primary);
+    letter-spacing: -0.009em;
 }
 
 .nav-controls {
@@ -131,7 +138,7 @@ body {
 
 .main-content {
     min-height: calc(100vh - 200px);
-    padding: 3rem 0;
+    padding: 4rem 0 6rem 0;
 }
 
 .container {
@@ -146,22 +153,24 @@ body {
 
 .header-section {
     text-align: center;
-    margin-bottom: 3rem;
+    margin-bottom: 5rem;
 }
 
 .page-title {
-    font-size: 3rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-    background: linear-gradient(135deg, var(--accent-primary), #5e5ce6);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    font-size: 3.5rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    letter-spacing: -0.015em;
+    line-height: 1.05;
+    color: var(--text-primary);
 }
 
 .page-subtitle {
-    font-size: 1.25rem;
+    font-size: 1.4rem;
+    font-weight: 400;
     color: var(--text-secondary);
+    letter-spacing: -0.016em;
+    line-height: 1.38095;
 }
 
 /* ============================================
@@ -178,15 +187,19 @@ body {
 .card {
     background: var(--card-bg);
     border-radius: 18px;
-    padding: 1.5rem;
+    padding: 2rem;
     border: 1px solid var(--border-color);
-    box-shadow: 0 4px 12px var(--shadow);
-    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px var(--shadow);
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="dark"] .card {
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 24px var(--shadow);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px var(--shadow-hover);
 }
 
 .card-header {
@@ -201,8 +214,9 @@ body {
 }
 
 .card-title {
-    font-size: 1.125rem;
-    font-weight: 600;
+    font-size: 1.25rem;
+    font-weight: 510;
+    letter-spacing: -0.009em;
 }
 
 .card-body {
@@ -293,8 +307,9 @@ body {
 }
 
 .section-title {
-    font-size: 1.75rem;
+    font-size: 2rem;
     font-weight: 600;
+    letter-spacing: -0.015em;
 }
 
 .tools-grid {
@@ -306,25 +321,34 @@ body {
 .tool-item {
     background: var(--card-bg);
     border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 1rem;
-    transition: all 0.2s ease;
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="dark"] .tool-item {
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .tool-item:hover {
     border-color: var(--accent-primary);
-    box-shadow: 0 4px 12px var(--shadow);
+    box-shadow: 0 4px 16px var(--shadow-hover);
+    transform: translateY(-1px);
 }
 
 .tool-name {
-    font-weight: 600;
+    font-weight: 510;
+    font-size: 1.0625rem;
     margin-bottom: 0.5rem;
     color: var(--accent-primary);
+    letter-spacing: -0.009em;
 }
 
 .tool-description {
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     color: var(--text-secondary);
+    line-height: 1.47059;
+    font-weight: 400;
 }
 
 /* ============================================
@@ -354,14 +378,23 @@ body {
 .form-select,
 .form-textarea {
     width: 100%;
-    padding: 0.75rem 1rem;
+    padding: 0.875rem 1.125rem;
     border: 1px solid var(--border-color);
-    border-radius: 10px;
-    background: var(--bg-secondary);
+    border-radius: 12px;
+    background: var(--bg-tertiary);
     color: var(--text-primary);
     font-family: inherit;
-    font-size: 1rem;
-    transition: all 0.2s ease;
+    font-size: 1.0625rem;
+    font-weight: 400;
+    letter-spacing: -0.016em;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="dark"] .form-input,
+[data-theme="dark"] .form-select,
+[data-theme="dark"] .form-textarea {
+    background: var(--bg-tertiary);
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
 .form-input:focus,
@@ -369,7 +402,14 @@ body {
 .form-textarea:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.1);
+    background: var(--bg-primary);
+    box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.1);
+}
+
+[data-theme="dark"] .form-input:focus,
+[data-theme="dark"] .form-select:focus,
+[data-theme="dark"] .form-textarea:focus {
+    background: var(--bg-secondary);
 }
 
 .form-textarea {
@@ -379,16 +419,18 @@ body {
 
 /* Buttons */
 .btn {
-    padding: 0.75rem 1.5rem;
+    padding: 0.875rem 1.75rem;
     border: none;
-    border-radius: 10px;
-    font-weight: 500;
-    font-size: 1rem;
+    border-radius: 980px;
+    font-weight: 400;
+    font-size: 1.0625rem;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
+    letter-spacing: -0.016em;
 }
 
 .btn-primary {
@@ -398,8 +440,12 @@ body {
 
 .btn-primary:hover {
     background: var(--accent-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 113, 227, 0.3);
+    transform: scale(1.02);
+    box-shadow: 0 4px 16px rgba(0, 113, 227, 0.25);
+}
+
+.btn-primary:active {
+    transform: scale(0.98);
 }
 
 .btn-secondary {
@@ -483,11 +529,16 @@ body {
 
 @media (max-width: 768px) {
     .page-title {
-        font-size: 2rem;
+        font-size: 2.5rem;
+    }
+
+    .page-subtitle {
+        font-size: 1.125rem;
     }
 
     .cards-grid {
         grid-template-columns: 1fr;
+        gap: 1rem;
     }
 
     .tools-grid {
@@ -500,12 +551,24 @@ body {
         align-items: flex-start;
     }
 
+    .section-title {
+        font-size: 1.5rem;
+    }
+
     .nav-container {
         padding: 1rem;
     }
 
     .container {
         padding: 0 1rem;
+    }
+
+    .main-content {
+        padding: 2rem 0 3rem 0;
+    }
+
+    .header-section {
+        margin-bottom: 3rem;
     }
 }
 
