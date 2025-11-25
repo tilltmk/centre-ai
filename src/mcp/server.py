@@ -105,7 +105,16 @@ class MCPServer:
 
     def list_tools(self) -> List[Dict[str, Any]]:
         """List all available tools"""
-        return list(self.tools_registry.values())
+        # Remove handler from tools (not JSON serializable)
+        tools = []
+        for tool in self.tools_registry.values():
+            tool_info = {
+                'name': tool.get('name'),
+                'description': tool.get('description'),
+                'parameters': tool.get('parameters', {})
+            }
+            tools.append(tool_info)
+        return tools
 
     def execute_tool(self, tool_name: str, parameters: Dict[str, Any], user: str = None) -> Dict[str, Any]:
         """Execute a tool with given parameters"""

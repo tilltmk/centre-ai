@@ -92,7 +92,7 @@ def get_status():
         },
         'services': {
             'vector_db': {
-                'connected': True,
+                'connected': len(vector_db.list_collections()) >= 0,
                 'collections': vector_db.list_collections()
             },
             'postgres': {
