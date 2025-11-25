@@ -4,8 +4,9 @@ Manages user profiles, preferences, and personal information
 """
 
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor, Json
+import psycopg
+from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import logging
@@ -27,7 +28,7 @@ class ProfileManager:
 
     def _get_connection(self):
         """Get database connection"""
-        return psycopg2.connect(**self.db_config)
+        return psycopg.connect(**self.db_config, row_factory=dict_row)
 
     def create_or_update_profile(
         self,
@@ -41,7 +42,7 @@ class ProfileManager:
         """Create or update user profile"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor = conn.cursor()
 
             cursor.execute("""
                 INSERT INTO user_profiles (user_id, full_name, email, bio, preferences, metadata)
@@ -55,7 +56,7 @@ class ProfileManager:
                     metadata = COALESCE(EXCLUDED.metadata, user_profiles.metadata),
                     updated_at = CURRENT_TIMESTAMP
                 RETURNING *
-            """, (user_id, full_name, email, bio, Json(preferences or {}), Json(metadata or {})))
+            """, (user_id, full_name, email, bio, Jsonb(preferences or {}), Jsonb(metadata or {})))
 
             result = cursor.fetchone()
             conn.commit()
@@ -78,7 +79,7 @@ class ProfileManager:
         """Get user profile"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor = conn.cursor()
 
             cursor.execute("SELECT * FROM user_profiles WHERE user_id = %s", (user_id,))
             result = cursor.fetchone()
@@ -112,7 +113,7 @@ class ProfileManager:
         """Update user preferences"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor = conn.cursor()
 
             cursor.execute("""
                 UPDATE user_profiles
@@ -120,7 +121,7 @@ class ProfileManager:
                     updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = %s
                 RETURNING *
-            """, (Json(preferences), user_id))
+            """, (Jsonb(preferences), user_id))
 
             result = cursor.fetchone()
             conn.commit()
@@ -184,7 +185,7 @@ class ConversationManager:
 
     def _get_connection(self):
         """Get database connection"""
-        return psycopg2.connect(**self.db_config)
+        return psycopg.connect(**self.db_config, row_factory=dict_row)
 
     def create_conversation(
         self,
@@ -196,13 +197,13 @@ class ConversationManager:
         """Create new conversation"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor = conn.cursor()
 
             cursor.execute("""
                 INSERT INTO conversations (user_id, session_id, title, context)
                 VALUES (%s, %s, %s, %s)
                 RETURNING *
-            """, (user_id, session_id, title, Json(context or {})))
+            """, (user_id, session_id, title, Jsonb(context or {})))
 
             result = cursor.fetchone()
             conn.commit()
@@ -231,7 +232,7 @@ class ConversationManager:
         """Add message to conversation"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor = conn.cursor()
 
             # Get conversation ID
             cursor.execute("SELECT id FROM conversations WHERE session_id = %s", (session_id,))
@@ -252,7 +253,7 @@ class ConversationManager:
                 INSERT INTO messages (conversation_id, role, content, metadata)
                 VALUES (%s, %s, %s, %s)
                 RETURNING *
-            """, (conversation_id, role, content, Json(metadata or {})))
+            """, (conversation_id, role, content, Jsonb(metadata or {})))
 
             result = cursor.fetchone()
             conn.commit()
@@ -279,7 +280,7 @@ class ConversationManager:
         """Get conversation history"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor = conn.cursor()
 
             cursor.execute("""
                 SELECT m.* FROM messages m
@@ -315,7 +316,7 @@ class ConversationManager:
         """Get user's conversations"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor = conn.cursor()
 
             cursor.execute("""
                 SELECT * FROM conversations
@@ -356,7 +357,7 @@ class MemoryManager:
 
     def _get_connection(self):
         """Get database connection"""
-        return psycopg2.connect(**self.db_config)
+        return psycopg.connect(**self.db_config, row_factory=dict_row)
 
     def store_memory(
         self,
@@ -370,13 +371,13 @@ class MemoryManager:
         """Store a memory"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor = conn.cursor()
 
             cursor.execute("""
                 INSERT INTO memories (user_id, memory_type, content, importance, tags, metadata)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING *
-            """, (user_id, memory_type, content, importance, tags or [], Json(metadata or {})))
+            """, (user_id, memory_type, content, importance, tags or [], Jsonb(metadata or {})))
 
             result = cursor.fetchone()
             conn.commit()
@@ -405,7 +406,7 @@ class MemoryManager:
         """Get memories"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor = conn.cursor()
 
             query = "SELECT * FROM memories WHERE user_id = %s"
             params = [user_id]

@@ -1,25 +1,22 @@
+# Core Framework
 Flask==3.0.0
 Flask-CORS==4.0.0
 python-dotenv==1.0.0
-requests==2.31.0
-pydantic==2.5.0
-anthropic==0.8.0
-ollama==0.1.6
+gunicorn==21.2.0
+
+# Authentication
 PyJWT==2.8.0
 bcrypt==4.1.2
-redis==5.0.1
-gunicorn==21.2.0
+
 # Git Integration
 GitPython==3.1.40
-# Vector Database
-qdrant-client==1.7.0
-# PostgreSQL
-psycopg2-binary==2.9.9
-# Code Analysis & Embeddings
-sentence-transformers==2.2.2
-tiktoken==0.5.2
-tree-sitter==0.20.4
-# Code Parsing
-ast-comments==1.1.2
+
+# Vector Database & Embeddings
+qdrant-client==1.12.1
+sentence-transformers==3.3.1
+
+# PostgreSQL (Profiles/Memory)
+psycopg[binary]==3.2.13
+
 # Utility
 pathspec==0.12.1
