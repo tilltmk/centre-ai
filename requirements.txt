@@ -12,7 +12,7 @@ bcrypt==4.1.2
 GitPython==3.1.40
 
 # Vector Database & Embeddings
-qdrant-client==1.12.1
+qdrant-client>=1.13.0
 sentence-transformers==3.3.1
 urllib3>=1.26,<2.0  # Fix compatibility with qdrant-client
 
