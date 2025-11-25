@@ -55,3 +55,6 @@ mcp_data/
 # Logs
 logs/
 *.log
+
+# Git Repositories (cloned by tool)
+git_repos/
