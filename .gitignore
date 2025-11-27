@@ -58,3 +58,5 @@ logs/
 
 # Git Repositories (cloned by tool)
 git_repos/
+.env
+*.env
