@@ -368,15 +368,14 @@ class MCPTools:
         chunks_indexed = 0
         errors = []
 
+        # Collect all files first to show total
+        all_files = []
         for file_path in path.rglob("*"):
             if not file_path.is_file():
                 continue
-
-            # Check extension
             if file_path.suffix not in extensions:
                 continue
 
-            # Check ignore patterns using relative path
             try:
                 relative_path = str(file_path.relative_to(path))
             except ValueError:
@@ -385,6 +384,12 @@ class MCPTools:
             if ignore_spec.match_file(relative_path):
                 continue
 
+            all_files.append((file_path, relative_path))
+
+        total_files = len(all_files)
+        print(f"[Codebase Indexing] Found {total_files} files to index")
+
+        for idx, (file_path, relative_path) in enumerate(all_files, 1):
             try:
                 content = file_path.read_text(encoding='utf-8', errors='ignore')
 
@@ -432,8 +437,14 @@ class MCPTools:
 
                 files_indexed += 1
 
+                # Progress logging every 10 files
+                if files_indexed % 10 == 0:
+                    print(f"[Codebase Indexing] Progress: {files_indexed}/{total_files} files ({chunks_indexed} chunks)")
+
             except Exception as e:
                 errors.append(f"{relative_path}: {str(e)}")
+
+        print(f"[Codebase Indexing] Completed: {files_indexed}/{total_files} files, {chunks_indexed} chunks")
 
         # Update codebase stats
         async with db.acquire() as conn:

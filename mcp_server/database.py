@@ -271,15 +271,22 @@ class VectorStore:
 
     async def _init_collections(self):
         """Initialize vector collections"""
+        loop = asyncio.get_event_loop()
         for collection_name in [self.COLLECTION_MEMORIES, self.COLLECTION_CODE, self.COLLECTION_KNOWLEDGE]:
             try:
-                self.client.get_collection(collection_name)
+                await loop.run_in_executor(
+                    None,
+                    lambda c=collection_name: self.client.get_collection(c)
+                )
             except Exception:
-                self.client.create_collection(
-                    collection_name=collection_name,
-                    vectors_config=qdrant_models.VectorParams(
-                        size=self._vector_size,
-                        distance=qdrant_models.Distance.COSINE
+                await loop.run_in_executor(
+                    None,
+                    lambda c=collection_name: self.client.create_collection(
+                        collection_name=c,
+                        vectors_config=qdrant_models.VectorParams(
+                            size=self._vector_size,
+                            distance=qdrant_models.Distance.COSINE
+                        )
                     )
                 )
 
@@ -293,15 +300,20 @@ class VectorStore:
 
     async def upsert(self, collection: str, id: str, vector: List[float], payload: Dict[str, Any]):
         """Insert or update a vector"""
-        self.client.upsert(
-            collection_name=collection,
-            points=[
-                qdrant_models.PointStruct(
-                    id=id,
-                    vector=vector,
-                    payload=payload
-                )
-            ]
+        # Ensure the operation completes by running in executor
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: self.client.upsert(
+                collection_name=collection,
+                points=[
+                    qdrant_models.PointStruct(
+                        id=id,
+                        vector=vector,
+                        payload=payload
+                    )
+                ]
+            )
         )
 
     async def search(self, collection: str, query: str, limit: int = 10, filters: Optional[Dict] = None) -> List[Dict]:
@@ -329,11 +341,16 @@ class VectorStore:
             if conditions:
                 filter_condition = qdrant_models.Filter(must=conditions)
 
-        results = self.client.search(
-            collection_name=collection,
-            query_vector=query_vector,
-            limit=limit,
-            query_filter=filter_condition
+        # Run search in executor to ensure it completes properly
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(
+            None,
+            lambda: self.client.search(
+                collection_name=collection,
+                query_vector=query_vector,
+                limit=limit,
+                query_filter=filter_condition
+            )
         )
 
         return [
@@ -347,17 +364,25 @@ class VectorStore:
 
     async def delete(self, collection: str, id: str):
         """Delete a vector by ID"""
-        self.client.delete(
-            collection_name=collection,
-            points_selector=qdrant_models.PointIdsList(points=[id])
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: self.client.delete(
+                collection_name=collection,
+                points_selector=qdrant_models.PointIdsList(points=[id])
+            )
         )
 
     async def get_stats(self) -> Dict[str, Any]:
         """Get collection statistics"""
         stats = {}
+        loop = asyncio.get_event_loop()
         for collection in [self.COLLECTION_MEMORIES, self.COLLECTION_CODE, self.COLLECTION_KNOWLEDGE]:
             try:
-                info = self.client.get_collection(collection)
+                info = await loop.run_in_executor(
+                    None,
+                    lambda c=collection: self.client.get_collection(c)
+                )
                 stats[collection] = {
                     "vectors_count": info.vectors_count,
                     "points_count": info.points_count
