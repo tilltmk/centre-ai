@@ -1,0 +1,16 @@
+[Unit]
+Description=Centre AI MCP stdio Socket
+Documentation=https://github.com/tilltmk/centre-ai
+
+[Socket]
+# Listen on Unix socket
+ListenStream=/run/centre-ai/mcp.sock
+SocketMode=0660
+SocketUser=mcp
+SocketGroup=mcp
+
+# Accept multiple connections
+Accept=yes
+
+[Install]
+WantedBy=sockets.target

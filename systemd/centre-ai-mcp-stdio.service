@@ -1,0 +1,37 @@
+[Unit]
+Description=Centre AI MCP stdio Server
+Documentation=https://github.com/tilltmk/centre-ai
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=mcp
+Group=mcp
+WorkingDirectory=/opt/centre-ai
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/etc/centre-ai/config.env
+
+# Run stdio server via systemd socket activation
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+
+ExecStart=/opt/centre-ai/venv/bin/python3 /opt/centre-ai/mcp_stdio_server.py
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/centre-ai
+
+# Resource limits
+LimitNOFILE=65536
+TasksMax=4096
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
