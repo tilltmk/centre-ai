@@ -35,12 +35,16 @@ RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 # Copy application code
 COPY mcp_server/ /app/mcp_server/
 
-# Create data directories
-RUN mkdir -p /app/data /app/git_repos && \
-    chown -R centre:centre /app
+# Create data directories and cache
+RUN mkdir -p /app/data /app/git_repos /home/centre/.cache && \
+    chown -R centre:centre /app /home/centre
 
 # Security: Switch to non-root user
 USER centre
+
+# Set cache directories
+ENV TRANSFORMERS_CACHE=/home/centre/.cache/huggingface
+ENV HF_HOME=/home/centre/.cache/huggingface
 
 # Environment defaults
 ENV PYTHONUNBUFFERED=1

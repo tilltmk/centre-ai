@@ -128,7 +128,7 @@ services:
     networks:
       - centre-internal
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      test: ["CMD", "sh", "-c", "nc -z localhost 6333"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -161,7 +161,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.28.0.0/16
+        - subnet: 172.25.0.0/16
 
 # ========================================
 # Persistent Volumes

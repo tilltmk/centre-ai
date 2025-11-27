@@ -32,3 +32,4 @@ pathspec>=0.12.1
 
 # Compatibility
 urllib3>=1.26,<2.0
+itsdangerous>=2.1.2
