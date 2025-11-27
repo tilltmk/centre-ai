@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from mcp_server.config import config
 from mcp_server.database import db, vector_store, init_databases
 from mcp_server.tools import MCPTools
+from mcp_server.oauth import OAuth2Server
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -564,6 +565,80 @@ async def conversations_page(request: Request, user: str = Depends(require_auth)
         "user": user,
         "conversations": result.get("conversations", [])
     })
+
+
+@app.get("/oauth-clients", response_class=HTMLResponse)
+async def oauth_clients_page(request: Request, user: str = Depends(require_auth)):
+    """OAuth clients management page"""
+    async with db.acquire() as conn:
+        clients = await conn.fetch("""
+            SELECT id, client_id, client_name, redirect_uris, is_public, is_active,
+                   created_at::text as created_at
+            FROM oauth_clients
+            ORDER BY created_at DESC
+        """)
+
+    return templates.TemplateResponse("oauth_clients.html", {
+        "request": request,
+        "user": user,
+        "clients": [dict(c) for c in clients],
+        "mcp_port": config.server.mcp_port
+    })
+
+
+@app.post("/api/oauth/clients")
+async def create_oauth_client(
+    request: Request,
+    user: str = Depends(require_auth)
+):
+    """Create new OAuth client"""
+    data = await request.json()
+
+    client_name = data.get("client_name")
+    redirect_uris = data.get("redirect_uris", [])
+    is_public = data.get("is_public", True)
+
+    if not client_name or not redirect_uris:
+        return JSONResponse({
+            "success": False,
+            "error": "client_name and redirect_uris are required"
+        })
+
+    try:
+        client = await OAuth2Server.register_client(
+            client_name=client_name,
+            redirect_uris=redirect_uris,
+            is_public=is_public
+        )
+
+        return JSONResponse({
+            "success": True,
+            "client": client
+        })
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        })
+
+
+@app.patch("/api/oauth/clients/{client_id}")
+async def update_oauth_client(
+    client_id: int,
+    request: Request,
+    user: str = Depends(require_auth)
+):
+    """Update OAuth client"""
+    data = await request.json()
+    is_active = data.get("is_active")
+
+    async with db.acquire() as conn:
+        await conn.execute("""
+            UPDATE oauth_clients SET is_active = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+        """, is_active, client_id)
+
+    return JSONResponse({"success": True})
 
 
 @app.get("/settings", response_class=HTMLResponse)

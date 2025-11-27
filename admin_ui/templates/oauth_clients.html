@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}OAuth Clients - Centre AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">OAuth Clients</h1>
+    <p class="page-subtitle">Manage OAuth 2.1 clients for Claude Connectors and other integrations</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Register New OAuth Client</h3>
+    </div>
+    <form id="register-client-form" onsubmit="registerClient(event)">
+        <div class="form-group">
+            <label class="form-label">Client Name</label>
+            <input type="text" id="client-name" name="client_name" class="form-input"
+                   placeholder="e.g., Claude Connector" required>
+            <p class="text-xs text-muted mt-1">A descriptive name for this client</p>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Redirect URIs (one per line)</label>
+            <textarea id="redirect-uris" name="redirect_uris" class="form-input" rows="3"
+                      placeholder="https://claude.ai/api/mcp/auth_callback&#10;http://localhost:3000/callback" required></textarea>
+            <p class="text-xs text-muted mt-1">Allowed redirect URIs for OAuth flow. For Claude, use: https://claude.ai/api/mcp/auth_callback</p>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Client Type</label>
+            <select id="client-type" name="client_type" class="form-select">
+                <option value="public" selected>Public (PKCE, recommended for Claude)</option>
+                <option value="confidential">Confidential (with client secret)</option>
+            </select>
+            <p class="text-xs text-muted mt-1">Public clients use PKCE and don't require a secret (recommended for Claude Connectors)</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Register Client</button>
+    </form>
+</div>
+
+<div id="client-created" class="card" style="display: none;">
+    <div class="card-header">
+        <h3 class="card-title">Client Registered Successfully</h3>
+    </div>
+    <div class="code-block" id="client-credentials"></div>
+    <p class="text-sm text-muted mt-2">Save these credentials - the client secret will not be shown again!</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Registered Clients</h3>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Client Name</th>
+                    <th>Client ID</th>
+                    <th>Type</th>
+                    <th>Redirect URIs</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="clients-list">
+                {% for client in clients %}
+                <tr>
+                    <td><strong>{{ client.client_name }}</strong></td>
+                    <td><code>{{ client.client_id }}</code></td>
+                    <td>{{ 'Public' if client.is_public else 'Confidential' }}</td>
+                    <td>
+                        <ul style="margin: 0; padding-left: 1rem;">
+                            {% for uri in client.redirect_uris %}
+                            <li style="font-size: 0.75rem;">{{ uri }}</li>
+                            {% endfor %}
+                        </ul>
+                    </td>
+                    <td>
+                        {% if client.is_active %}
+                        <span style="color: #00ff00;">Active</span>
+                        {% else %}
+                        <span style="color: #ff0000;">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ client.created_at }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-secondary" onclick="toggleClient({{ client.id }}, {{ 'false' if client.is_active else 'true' }})">
+                            {{ 'Deactivate' if client.is_active else 'Activate' }}
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Claude Connector Setup</h3>
+    </div>
+    <p class="text-sm mb-2">To use this server with Claude.ai Connectors:</p>
+    <ol style="margin-left: 1.5rem; margin-bottom: 1rem;">
+        <li>Register a new OAuth client with redirect URI: <code>https://claude.ai/api/mcp/auth_callback</code></li>
+        <li>Go to <a href="https://claude.ai" target="_blank" style="text-decoration: underline;">claude.ai</a></li>
+        <li>Navigate to Settings > Connectors > Add Custom Connector</li>
+        <li>Enter your server URL: <code>http://YOUR_SERVER:{{ mcp_port }}/sse</code></li>
+        <li>In Advanced settings, enter your Client ID from above</li>
+        <li>Complete the OAuth flow when prompted</li>
+    </ol>
+    <p class="text-sm text-muted">Your server supports Dynamic Client Registration (DCR) - Claude can auto-register!</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function registerClient(event) {
+        event.preventDefault();
+
+        const clientName = document.getElementById('client-name').value;
+        const redirectUrisText = document.getElementById('redirect-uris').value;
+        const clientType = document.getElementById('client-type').value;
+
+        const redirectUris = redirectUrisText.split('\n').map(uri => uri.trim()).filter(uri => uri);
+
+        const data = {
+            client_name: clientName,
+            redirect_uris: redirectUris,
+            is_public: clientType === 'public'
+        };
+
+        try {
+            const response = await fetch('/api/oauth/clients', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                document.getElementById('client-credentials').textContent = JSON.stringify(result.client, null, 2);
+                document.getElementById('client-created').style.display = 'block';
+                document.getElementById('register-client-form').reset();
+
+                // Reload page after 3 seconds
+                setTimeout(() => {
+                    window.location.reload();
+                }, 3000);
+            } else {
+                alert('Failed to register client: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to register client');
+        }
+    }
+
+    async function toggleClient(clientId, activate) {
+        try {
+            const response = await fetch(`/api/oauth/clients/${clientId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ is_active: activate })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                window.location.reload();
+            } else {
+                alert('Failed to update client');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to update client');
+        }
+    }
+</script>
+{% endblock %}

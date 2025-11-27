@@ -165,6 +165,59 @@ class Database:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
+                CREATE TABLE IF NOT EXISTS oauth_clients (
+                    id SERIAL PRIMARY KEY,
+                    client_id VARCHAR(255) UNIQUE NOT NULL,
+                    client_secret_hash VARCHAR(255),
+                    client_name VARCHAR(200) NOT NULL,
+                    redirect_uris TEXT[] NOT NULL,
+                    grant_types TEXT[] DEFAULT '{"authorization_code","refresh_token"}',
+                    scope TEXT DEFAULT 'read write',
+                    is_public BOOLEAN DEFAULT false,
+                    is_active BOOLEAN DEFAULT true,
+                    metadata JSONB DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
+                    id SERIAL PRIMARY KEY,
+                    code VARCHAR(255) UNIQUE NOT NULL,
+                    client_id VARCHAR(255) NOT NULL REFERENCES oauth_clients(client_id) ON DELETE CASCADE,
+                    user_id VARCHAR(100),
+                    redirect_uri TEXT NOT NULL,
+                    scope TEXT,
+                    code_challenge VARCHAR(255) NOT NULL,
+                    code_challenge_method VARCHAR(10) DEFAULT 'S256',
+                    resource TEXT,
+                    expires_at TIMESTAMP NOT NULL,
+                    is_used BOOLEAN DEFAULT false,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS oauth_access_tokens (
+                    id SERIAL PRIMARY KEY,
+                    access_token VARCHAR(255) UNIQUE NOT NULL,
+                    client_id VARCHAR(255) NOT NULL REFERENCES oauth_clients(client_id) ON DELETE CASCADE,
+                    user_id VARCHAR(100),
+                    scope TEXT,
+                    resource TEXT,
+                    token_type VARCHAR(50) DEFAULT 'Bearer',
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
+                    id SERIAL PRIMARY KEY,
+                    refresh_token VARCHAR(255) UNIQUE NOT NULL,
+                    access_token_id INTEGER REFERENCES oauth_access_tokens(id) ON DELETE CASCADE,
+                    client_id VARCHAR(255) NOT NULL REFERENCES oauth_clients(client_id) ON DELETE CASCADE,
+                    user_id VARCHAR(100),
+                    scope TEXT,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type);
                 CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories USING GIN(tags);
                 CREATE INDEX IF NOT EXISTS idx_code_files_codebase ON code_files(codebase_id);

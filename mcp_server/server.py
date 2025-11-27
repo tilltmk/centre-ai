@@ -32,6 +32,15 @@ from starlette.middleware.cors import CORSMiddleware
 from .config import config
 from .database import db, vector_store, init_databases
 from .tools import MCPTools, TOOL_DEFINITIONS
+from .oauth import OAuth2Server, get_authorization_server_metadata, get_protected_resource_metadata
+from .oauth_routes import (
+    oauth_metadata,
+    protected_resource_metadata,
+    oauth_register,
+    oauth_authorize,
+    oauth_token,
+    oauth_revoke
+)
 
 # Configure logging
 logging.basicConfig(level=getattr(logging, config.server.log_level))
@@ -222,17 +231,35 @@ Total memories found: {memories.get('count', 0)}
             )
 
 
-def verify_auth_token(request: Request) -> bool:
-    """Verify authentication token"""
+async def verify_auth_token(request: Request) -> bool:
+    """
+    Verify authentication token
+    Supports both:
+    1. Static Bearer token (existing)
+    2. OAuth 2.1 access tokens (new)
+    """
     auth_header = request.headers.get("Authorization", "")
 
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
-        return hmac.compare_digest(token, config.security.mcp_auth_token)
 
-    # Also check query parameter for SSE connections
+        # Try static MCP auth token first (backward compatibility)
+        if hmac.compare_digest(token, config.security.mcp_auth_token):
+            return True
+
+        # Try OAuth access token
+        token_data = await OAuth2Server.verify_access_token(token)
+        if token_data:
+            # Attach token data to request state for later use
+            request.state.oauth_token = token_data
+            return True
+
+    # Also check query parameter for SSE connections (static token only)
     token = request.query_params.get("token", "")
-    return hmac.compare_digest(token, config.security.mcp_auth_token)
+    if hmac.compare_digest(token, config.security.mcp_auth_token):
+        return True
+
+    return False
 
 
 def create_mcp_app() -> Starlette:
@@ -243,10 +270,15 @@ def create_mcp_app() -> Starlette:
 
     async def handle_sse(request: Request) -> Response:
         """Handle SSE connection for MCP"""
-        if not verify_auth_token(request):
+        if not await verify_auth_token(request):
+            # Return 401 with www-authenticate header for OAuth discovery
+            base_url = f"{request.url.scheme}://{request.url.netloc}"
             return JSONResponse(
                 {"error": "Unauthorized"},
-                status_code=401
+                status_code=401,
+                headers={
+                    "WWW-Authenticate": f'Bearer realm="{base_url}", resource="{base_url}/.well-known/oauth-protected-resource"'
+                }
             )
 
         logger.info(f"SSE connection from {request.client.host}")
@@ -266,10 +298,14 @@ def create_mcp_app() -> Starlette:
 
     async def handle_messages(request: Request) -> Response:
         """Handle MCP messages"""
-        if not verify_auth_token(request):
+        if not await verify_auth_token(request):
+            base_url = f"{request.url.scheme}://{request.url.netloc}"
             return JSONResponse(
                 {"error": "Unauthorized"},
-                status_code=401
+                status_code=401,
+                headers={
+                    "WWW-Authenticate": f'Bearer realm="{base_url}", resource="{base_url}/.well-known/oauth-protected-resource"'
+                }
             )
 
         return await sse_transport.handle_post_message(
@@ -288,10 +324,14 @@ def create_mcp_app() -> Starlette:
 
     async def server_info(request: Request) -> JSONResponse:
         """Server information endpoint"""
-        if not verify_auth_token(request):
+        if not await verify_auth_token(request):
+            base_url = f"{request.url.scheme}://{request.url.netloc}"
             return JSONResponse(
                 {"error": "Unauthorized"},
-                status_code=401
+                status_code=401,
+                headers={
+                    "WWW-Authenticate": f'Bearer realm="{base_url}", resource="{base_url}/.well-known/oauth-protected-resource"'
+                }
             )
 
         vector_stats = await vector_store.get_stats()
@@ -316,6 +356,14 @@ def create_mcp_app() -> Starlette:
         Route("/info", server_info),
         Route("/sse", handle_sse),
         Route("/messages/", handle_messages, methods=["POST"]),
+
+        # OAuth 2.1 Endpoints
+        Route("/.well-known/oauth-authorization-server", oauth_metadata),
+        Route("/.well-known/oauth-protected-resource", protected_resource_metadata),
+        Route("/oauth/register", oauth_register, methods=["POST"]),
+        Route("/oauth/authorize", oauth_authorize),
+        Route("/oauth/token", oauth_token, methods=["POST"]),
+        Route("/oauth/revoke", oauth_revoke, methods=["POST"]),
     ]
 
     middleware = [
