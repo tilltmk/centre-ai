@@ -154,12 +154,32 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    id SERIAL PRIMARY KEY,
+                    setting_key VARCHAR(100) UNIQUE NOT NULL,
+                    setting_value TEXT,
+                    setting_type VARCHAR(50) DEFAULT 'string',
+                    description TEXT,
+                    metadata JSONB DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type);
                 CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories USING GIN(tags);
                 CREATE INDEX IF NOT EXISTS idx_code_files_codebase ON code_files(codebase_id);
                 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
                 CREATE INDEX IF NOT EXISTS idx_knowledge_edges_source ON knowledge_edges(source_id);
                 CREATE INDEX IF NOT EXISTS idx_knowledge_edges_target ON knowledge_edges(target_id);
+                CREATE INDEX IF NOT EXISTS idx_system_settings_key ON system_settings(setting_key);
+
+                -- Insert default settings
+                INSERT INTO system_settings (setting_key, setting_value, setting_type, description)
+                VALUES
+                    ('search_engine', 'duckduckgo', 'string', 'Default web search engine'),
+                    ('searx_instance_url', 'https://searx.be', 'string', 'SearX instance URL'),
+                    ('search_results_count', '10', 'integer', 'Default number of search results')
+                ON CONFLICT (setting_key) DO NOTHING;
             """)
 
     @asynccontextmanager

@@ -176,6 +176,7 @@
         <div style="display: flex; gap: 0.5rem;">
             <button class="btn btn-secondary btn-sm" onclick="resetZoom()">Reset View</button>
             <button class="btn btn-secondary btn-sm" onclick="loadGraph()">Refresh</button>
+            <button class="btn btn-primary btn-sm" onclick="syncGraphData()">Auto-Sync Data</button>
         </div>
     </div>
     <div class="graph-container" id="graph-container">
@@ -201,6 +202,14 @@
                 <div class="legend-color" style="background: #171717;"></div>
                 <span>Document</span>
             </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #a3a3a3;"></div>
+                <span>Memory</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #525252;"></div>
+                <span>Codebase</span>
+            </div>
         </div>
         <div class="node-tooltip" id="tooltip"></div>
     </div>
@@ -214,7 +223,9 @@
         person: '#d4d4d4',
         project: '#737373',
         technology: '#404040',
-        document: '#171717'
+        document: '#171717',
+        memory: '#a3a3a3',
+        codebase: '#525252'
     };
 
     let svg, g, simulation, zoom;
@@ -439,16 +450,59 @@
         }
     }
 
+    // Auto-refresh interval
+    let autoRefreshInterval = null;
+    const AUTO_REFRESH_MS = 30000; // 30 seconds
+
+    function startAutoRefresh() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+        }
+        autoRefreshInterval = setInterval(() => {
+            loadGraph();
+        }, AUTO_REFRESH_MS);
+    }
+
+    function stopAutoRefresh() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
+    }
+
+    async function syncGraphData() {
+        // Sync knowledge graph with memories, codebases, and projects
+        try {
+            const response = await fetch('/api/knowledge-graph/sync', {
+                method: 'POST'
+            });
+            const data = await response.json();
+            if (data.success) {
+                console.log('Graph synced:', data);
+                loadGraph();
+            }
+        } catch (error) {
+            console.error('Failed to sync graph:', error);
+        }
+    }
+
     // Initialize on load
     document.addEventListener('DOMContentLoaded', () => {
         initGraph();
         loadGraph();
+        startAutoRefresh();
+        syncGraphData(); // Initial sync
     });
 
     // Handle resize
     window.addEventListener('resize', () => {
         initGraph();
         updateGraph();
+    });
+
+    // Stop auto-refresh when leaving page
+    window.addEventListener('beforeunload', () => {
+        stopAutoRefresh();
     });
 </script>
 {% endblock %}

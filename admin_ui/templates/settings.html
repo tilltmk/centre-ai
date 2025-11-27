@@ -2,10 +2,63 @@
 
 {% block title %}Settings - Centre AI{% endblock %}
 
+{% block head %}
+<style>
+    .success-message {
+        background: var(--gray-100);
+        padding: 0.75rem;
+        margin-bottom: 1rem;
+        border: 1px solid var(--black);
+        display: none;
+    }
+    .success-message.visible {
+        display: block;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <h1 class="page-title">Settings</h1>
     <p class="page-subtitle">MCP Server configuration and connection details</p>
+</div>
+
+<div id="success-message" class="success-message">
+    Settings saved successfully
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Web Search Engine</h3>
+    </div>
+    <form id="search-settings-form" onsubmit="saveSearchSettings(event)">
+        <div class="form-group">
+            <label class="form-label">Default Search Engine</label>
+            <select id="search-engine" name="search_engine" class="form-select">
+                <option value="duckduckgo" {% if search_engine == 'duckduckgo' %}selected{% endif %}>DuckDuckGo</option>
+                <option value="searx" {% if search_engine == 'searx' %}selected{% endif %}>SearX</option>
+                <option value="qwant" {% if search_engine == 'qwant' %}selected{% endif %}>Qwant</option>
+                <option value="startpage" {% if search_engine == 'startpage' %}selected{% endif %}>Startpage</option>
+            </select>
+            <p class="text-xs text-muted mt-1">Select the default search engine for web_search tool</p>
+        </div>
+
+        <div class="form-group" id="searx-url-group" style="{% if search_engine != 'searx' %}display: none;{% endif %}">
+            <label class="form-label">SearX Instance URL</label>
+            <input type="url" id="searx-instance-url" name="searx_instance_url" class="form-input"
+                   value="{{ searx_instance_url }}" placeholder="https://searx.be">
+            <p class="text-xs text-muted mt-1">URL of your SearX instance (e.g., https://searx.be)</p>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Default Results Count</label>
+            <input type="number" id="search-results-count" name="search_results_count" class="form-input"
+                   value="{{ search_results_count }}" min="1" max="50">
+            <p class="text-xs text-muted mt-1">Number of search results to return (1-50)</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Save Search Settings</button>
+    </form>
 </div>
 
 <div class="card">
@@ -85,7 +138,7 @@
                 </tr>
                 <tr>
                     <td><code>web_search</code></td>
-                    <td>Search the web using DuckDuckGo</td>
+                    <td>Search the web using configurable search engines (DuckDuckGo, SearX, Qwant, Startpage)</td>
                 </tr>
                 <tr>
                     <td><code>get_knowledge_graph</code></td>
@@ -119,4 +172,51 @@
         </table>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Show/hide SearX URL field based on selected search engine
+    document.getElementById('search-engine').addEventListener('change', function() {
+        const searxUrlGroup = document.getElementById('searx-url-group');
+        if (this.value === 'searx') {
+            searxUrlGroup.style.display = 'block';
+        } else {
+            searxUrlGroup.style.display = 'none';
+        }
+    });
+
+    async function saveSearchSettings(event) {
+        event.preventDefault();
+
+        const formData = {
+            search_engine: document.getElementById('search-engine').value,
+            searx_instance_url: document.getElementById('searx-instance-url').value,
+            search_results_count: parseInt(document.getElementById('search-results-count').value)
+        };
+
+        try {
+            const response = await fetch('/api/settings/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const successMsg = document.getElementById('success-message');
+                successMsg.classList.add('visible');
+                setTimeout(() => {
+                    successMsg.classList.remove('visible');
+                }, 3000);
+            }
+        } catch (error) {
+            console.error('Failed to save settings:', error);
+            alert('Failed to save settings');
+        }
+    }
+</script>
 {% endblock %}

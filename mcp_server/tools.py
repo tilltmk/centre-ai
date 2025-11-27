@@ -13,6 +13,8 @@ import hashlib
 
 import httpx
 from bs4 import BeautifulSoup
+from pathspec import PathSpec
+from pathspec.patterns import GitWildMatchPattern
 
 from .database import db, vector_store, VectorStore
 from .config import config
@@ -288,8 +290,69 @@ class MCPTools:
             '.h': 'c', '.hpp': 'cpp', '.rb': 'ruby', '.php': 'php',
             '.swift': 'swift', '.kt': 'kotlin', '.scala': 'scala',
             '.sh': 'bash', '.sql': 'sql', '.html': 'html', '.css': 'css',
-            '.json': 'json', '.yaml': 'yaml', '.yml': 'yaml', '.md': 'markdown'
+            '.json': 'json', '.yaml': 'yaml', '.yml': 'yaml', '.md': 'markdown',
+            '.cs': 'csharp', '.r': 'r', '.scss': 'scss', '.xml': 'xml',
+            '.rst': 'rst', '.tex': 'latex'
         }
+
+        # Ignore patterns (like .gitignore)
+        ignore_patterns = [
+            '.git/',
+            '__pycache__/',
+            'node_modules/',
+            'venv/',
+            'env/',
+            '.env/',
+            'dist/',
+            'build/',
+            '.next/',
+            '.cache/',
+            'target/',
+            'bin/',
+            'obj/',
+            '*.pyc',
+            '*.pyo',
+            '*.pyd',
+            '*.so',
+            '*.dll',
+            '*.dylib',
+            '*.exe',
+            '*.o',
+            '*.a',
+            '*.class',
+            '*.jar',
+            '*.war',
+            '*.ear',
+            '*.min.js',
+            '*.min.css',
+            '*.map',
+            'package-lock.json',
+            'yarn.lock',
+            '.DS_Store'
+        ]
+
+        ignore_spec = PathSpec.from_lines(GitWildMatchPattern, ignore_patterns)
+
+        def chunk_code(content: str, chunk_size: int = 500) -> List[str]:
+            """Split code into chunks for better indexing"""
+            lines = content.split('\n')
+            chunks = []
+            current_chunk = []
+            current_size = 0
+
+            for line in lines:
+                line_size = len(line) + 1
+                if current_size + line_size > chunk_size and current_chunk:
+                    chunks.append('\n'.join(current_chunk))
+                    current_chunk = []
+                    current_size = 0
+                current_chunk.append(line)
+                current_size += line_size
+
+            if current_chunk:
+                chunks.append('\n'.join(current_chunk))
+
+            return chunks
 
         # Create codebase entry
         async with db.acquire() as conn:
@@ -302,34 +365,56 @@ class MCPTools:
 
         # Index files
         files_indexed = 0
+        chunks_indexed = 0
         errors = []
 
         for file_path in path.rglob("*"):
-            if file_path.is_file() and file_path.suffix in extensions:
-                # Skip common ignore patterns
-                if any(p in str(file_path) for p in ['.git', 'node_modules', '__pycache__', 'venv', '.env']):
+            if not file_path.is_file():
+                continue
+
+            # Check extension
+            if file_path.suffix not in extensions:
+                continue
+
+            # Check ignore patterns using relative path
+            try:
+                relative_path = str(file_path.relative_to(path))
+            except ValueError:
+                continue
+
+            if ignore_spec.match_file(relative_path):
+                continue
+
+            try:
+                content = file_path.read_text(encoding='utf-8', errors='ignore')
+
+                # Skip empty files
+                if not content.strip():
                     continue
 
-                try:
-                    content = file_path.read_text(encoding='utf-8', errors='ignore')
-                    if len(content) > 100000:  # Skip very large files
-                        continue
+                # Skip very large files (>500KB)
+                if len(content) > 500000:
+                    errors.append(f"{relative_path}: File too large (>500KB)")
+                    continue
 
-                    language = extensions[file_path.suffix]
-                    relative_path = str(file_path.relative_to(path))
+                language = extensions[file_path.suffix]
 
-                    # Generate embedding
-                    vector = vector_store.encode(content[:8000])  # Limit for embedding
-                    embedding_id = vector_store.generate_id(f"{codebase_id}:{relative_path}")
+                # Store complete file in database
+                async with db.acquire() as conn:
+                    await conn.execute("""
+                        INSERT INTO code_files (codebase_id, file_path, content, language, embedding_id)
+                        VALUES ($1, $2, $3, $4, $5)
+                    """, codebase_id, relative_path, content, language, f"{codebase_id}:{relative_path}")
 
-                    # Store in database
-                    async with db.acquire() as conn:
-                        await conn.execute("""
-                            INSERT INTO code_files (codebase_id, file_path, content, language, embedding_id)
-                            VALUES ($1, $2, $3, $4, $5)
-                        """, codebase_id, relative_path, content, language, embedding_id)
+                # Chunk the content for better vector search
+                chunks = chunk_code(content)
 
-                    # Store in vector database
+                for i, chunk in enumerate(chunks):
+                    # Generate embedding for chunk
+                    vector = vector_store.encode(chunk)
+                    embedding_id = vector_store.generate_id(f"{codebase_id}:{relative_path}:chunk{i}")
+
+                    # Store chunk in vector database
                     await vector_store.upsert(
                         VectorStore.COLLECTION_CODE,
                         embedding_id,
@@ -338,13 +423,17 @@ class MCPTools:
                             "codebase_id": codebase_id,
                             "file_path": relative_path,
                             "language": language,
-                            "content": content[:2000]
+                            "chunk_index": i,
+                            "total_chunks": len(chunks),
+                            "content": chunk
                         }
                     )
+                    chunks_indexed += 1
 
-                    files_indexed += 1
-                except Exception as e:
-                    errors.append(f"{file_path}: {str(e)}")
+                files_indexed += 1
+
+            except Exception as e:
+                errors.append(f"{relative_path}: {str(e)}")
 
         # Update codebase stats
         async with db.acquire() as conn:
@@ -357,6 +446,7 @@ class MCPTools:
             "success": True,
             "codebase_id": codebase_id,
             "files_indexed": files_indexed,
+            "chunks_indexed": chunks_indexed,
             "errors": errors[:10] if errors else []
         }
 
@@ -577,23 +667,33 @@ class MCPTools:
     async def web_search(
         query: str,
         num_results: int = 5,
-        search_engine: str = "duckduckgo"
+        search_engine: str = None
     ) -> Dict[str, Any]:
         """
         Search the web for information.
 
         Args:
             query: Search query
-            num_results: Number of results to return
-            search_engine: Search engine to use (duckduckgo, google)
+            num_results: Number of search results to return
+            search_engine: Search engine to use (duckduckgo, searx, qwant, google)
+                          If None, uses default from system settings
 
         Returns:
             List of search results with titles, URLs, and snippets
         """
+        # Get default search engine from settings if not specified
+        if search_engine is None:
+            async with db.acquire() as conn:
+                row = await conn.fetchrow("""
+                    SELECT setting_value FROM system_settings
+                    WHERE setting_key = 'search_engine'
+                """)
+                search_engine = row["setting_value"] if row else "duckduckgo"
+
         results = []
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 if search_engine == "duckduckgo":
                     # DuckDuckGo HTML search
                     response = await client.get(
@@ -620,10 +720,97 @@ class MCPTools:
                                     "url": url,
                                     "snippet": snippet
                                 })
+
+                elif search_engine == "searx":
+                    # Get SearX instance URL from settings
+                    async with db.acquire() as conn:
+                        row = await conn.fetchrow("""
+                            SELECT setting_value FROM system_settings
+                            WHERE setting_key = 'searx_instance_url'
+                        """)
+                        searx_url = row["setting_value"] if row else "https://searx.be"
+
+                    # SearX JSON API
+                    response = await client.get(
+                        f"{searx_url}/search",
+                        params={
+                            "q": query,
+                            "format": "json",
+                            "pageno": 1
+                        },
+                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                    )
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        for result in data.get("results", [])[:num_results]:
+                            results.append({
+                                "title": result.get("title", ""),
+                                "url": result.get("url", ""),
+                                "snippet": result.get("content", "")
+                            })
+
+                elif search_engine == "qwant":
+                    # Qwant API
+                    response = await client.get(
+                        "https://api.qwant.com/v3/search/web",
+                        params={
+                            "q": query,
+                            "count": num_results,
+                            "locale": "de_DE",
+                            "device": "desktop"
+                        },
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                        }
+                    )
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        items = data.get("data", {}).get("result", {}).get("items", [])
+
+                        for item in items[:num_results]:
+                            results.append({
+                                "title": item.get("title", ""),
+                                "url": item.get("url", ""),
+                                "snippet": item.get("desc", "")
+                            })
+
+                elif search_engine == "startpage":
+                    # Startpage search (HTML scraping)
+                    response = await client.get(
+                        "https://www.startpage.com/sp/search",
+                        params={
+                            "query": query,
+                            "language": "deutsch",
+                            "cat": "web"
+                        },
+                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                    )
+
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+
+                        for result in soup.select('.w-gl__result')[:num_results]:
+                            title_elem = result.select_one('.w-gl__result-title')
+                            snippet_elem = result.select_one('.w-gl__description')
+                            link_elem = result.select_one('.w-gl__result-url')
+
+                            if title_elem:
+                                title = title_elem.get_text(strip=True)
+                                snippet = snippet_elem.get_text(strip=True) if snippet_elem else ""
+                                url = link_elem.get_text(strip=True) if link_elem else ""
+
+                                results.append({
+                                    "title": title,
+                                    "url": url,
+                                    "snippet": snippet
+                                })
+
                 else:
                     return {
                         "success": False,
-                        "error": f"Search engine '{search_engine}' not supported"
+                        "error": f"Search engine '{search_engine}' not supported. Available: duckduckgo, searx, qwant, startpage"
                     }
 
         except Exception as e:
@@ -635,6 +822,7 @@ class MCPTools:
         return {
             "success": True,
             "query": query,
+            "engine": search_engine,
             "count": len(results),
             "results": results
         }
@@ -893,7 +1081,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "web_search",
-        "description": "Search the web for information using DuckDuckGo.",
+        "description": "Search the web for information using configurable search engines. Supports DuckDuckGo, SearX, Qwant, and Startpage. Uses default search engine from system settings if not specified.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -903,7 +1091,14 @@ TOOL_DEFINITIONS = [
                 },
                 "num_results": {
                     "type": "integer",
-                    "description": "Number of results"
+                    "description": "Number of search results to return (1-50). Uses system default if not specified.",
+                    "minimum": 1,
+                    "maximum": 50
+                },
+                "search_engine": {
+                    "type": "string",
+                    "enum": ["duckduckgo", "searx", "qwant", "startpage"],
+                    "description": "Search engine to use. If not specified, uses the default from system settings. Options: duckduckgo (privacy-focused), searx (configurable instance), qwant (European privacy-focused), startpage (Google proxy with privacy)"
                 }
             },
             "required": ["query"]

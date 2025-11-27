@@ -411,6 +411,150 @@ async def create_knowledge_edge(
     return JSONResponse({"success": True, "id": row["id"]})
 
 
+@app.post("/api/knowledge-graph/sync")
+async def sync_knowledge_graph(user: str = Depends(require_auth)):
+    """
+    Automatically sync knowledge graph with memories, codebases, and projects.
+    Creates nodes and edges based on existing data.
+    """
+    nodes_created = 0
+    edges_created = 0
+
+    async with db.acquire() as conn:
+        # Sync memories as nodes
+        memories = await conn.fetch("""
+            SELECT id, content, memory_type, importance, tags
+            FROM memories
+            ORDER BY importance DESC, created_at DESC
+            LIMIT 50
+        """)
+
+        for memory in memories:
+            # Check if node already exists
+            existing = await conn.fetchrow("""
+                SELECT id FROM knowledge_nodes
+                WHERE node_type = 'memory' AND title = $1
+            """, f"Memory #{memory['id']}")
+
+            if not existing:
+                title = memory['content'][:50] + "..." if len(memory['content']) > 50 else memory['content']
+                await conn.execute("""
+                    INSERT INTO knowledge_nodes (node_type, title, content, parent_id)
+                    VALUES ($1, $2, $3, $4)
+                """, 'memory', title, memory['content'], None)
+                nodes_created += 1
+
+        # Sync codebases as nodes
+        codebases = await conn.fetch("""
+            SELECT id, name, description, language, file_count
+            FROM codebases
+            ORDER BY indexed_at DESC
+        """)
+
+        for codebase in codebases:
+            existing = await conn.fetchrow("""
+                SELECT id FROM knowledge_nodes
+                WHERE node_type = 'codebase' AND title = $1
+            """, codebase['name'])
+
+            if not existing:
+                content = f"{codebase['description'] or 'No description'} | Language: {codebase['language'] or 'Mixed'} | Files: {codebase['file_count'] or 0}"
+                node_row = await conn.fetchrow("""
+                    INSERT INTO knowledge_nodes (node_type, title, content, parent_id)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING id
+                """, 'technology', codebase['name'], content, None)
+                nodes_created += 1
+
+                # Create edges to related code files (most important ones)
+                code_files = await conn.fetch("""
+                    SELECT DISTINCT language FROM code_files
+                    WHERE codebase_id = $1
+                    LIMIT 5
+                """, codebase['id'])
+
+                for file in code_files:
+                    # Find or create language node
+                    lang_node = await conn.fetchrow("""
+                        SELECT id FROM knowledge_nodes
+                        WHERE node_type = 'technology' AND title = $1
+                    """, file['language'].title())
+
+                    if not lang_node:
+                        lang_node = await conn.fetchrow("""
+                            INSERT INTO knowledge_nodes (node_type, title, content, parent_id)
+                            VALUES ($1, $2, $3, $4)
+                            RETURNING id
+                        """, 'technology', file['language'].title(), f"Programming language: {file['language']}", None)
+                        nodes_created += 1
+
+                    # Create edge between codebase and language
+                    edge_exists = await conn.fetchrow("""
+                        SELECT id FROM knowledge_edges
+                        WHERE source_id = $1 AND target_id = $2
+                    """, node_row['id'], lang_node['id'])
+
+                    if not edge_exists:
+                        await conn.execute("""
+                            INSERT INTO knowledge_edges (source_id, target_id, relationship, weight)
+                            VALUES ($1, $2, $3, $4)
+                        """, node_row['id'], lang_node['id'], 'uses_language', 1.0)
+                        edges_created += 1
+
+        # Sync projects as nodes
+        projects = await conn.fetch("""
+            SELECT id, name, description, status, priority, tags
+            FROM projects
+            ORDER BY priority DESC, updated_at DESC
+        """)
+
+        for project in projects:
+            existing = await conn.fetchrow("""
+                SELECT id FROM knowledge_nodes
+                WHERE node_type = 'project' AND title = $1
+            """, project['name'])
+
+            if not existing:
+                content = f"{project['description'] or 'No description'} | Status: {project['status']} | Priority: {project['priority']}"
+                project_node = await conn.fetchrow("""
+                    INSERT INTO knowledge_nodes (node_type, title, content, parent_id)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING id
+                """, 'project', project['name'], content, None)
+                nodes_created += 1
+
+                # Create edges based on tags
+                if project['tags']:
+                    for tag in project['tags']:
+                        # Find related codebases with similar names or descriptions
+                        related_codebases = await conn.fetch("""
+                            SELECT kn.id FROM knowledge_nodes kn
+                            WHERE kn.node_type = 'technology'
+                            AND (kn.title ILIKE $1 OR kn.content ILIKE $1)
+                            LIMIT 3
+                        """, f"%{tag}%")
+
+                        for cb in related_codebases:
+                            edge_exists = await conn.fetchrow("""
+                                SELECT id FROM knowledge_edges
+                                WHERE source_id = $1 AND target_id = $2
+                            """, project_node['id'], cb['id'])
+
+                            if not edge_exists:
+                                await conn.execute("""
+                                    INSERT INTO knowledge_edges (source_id, target_id, relationship, weight)
+                                    VALUES ($1, $2, $3, $4)
+                                """, project_node['id'], cb['id'], 'relates_to', 0.7)
+                                edges_created += 1
+
+    return JSONResponse({
+        "success": True,
+        "nodes_created": nodes_created,
+        "edges_created": edges_created,
+        "message": f"Synced {nodes_created} nodes and {edges_created} edges"
+    })
+
+
 @app.get("/conversations", response_class=HTMLResponse)
 async def conversations_page(request: Request, user: str = Depends(require_auth)):
     """Conversations view page"""
@@ -425,11 +569,26 @@ async def conversations_page(request: Request, user: str = Depends(require_auth)
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, user: str = Depends(require_auth)):
     """Settings page"""
+    # Load search engine settings
+    async with db.acquire() as conn:
+        search_engine_row = await conn.fetchrow(
+            "SELECT setting_value FROM system_settings WHERE setting_key = 'search_engine'"
+        )
+        searx_url_row = await conn.fetchrow(
+            "SELECT setting_value FROM system_settings WHERE setting_key = 'searx_instance_url'"
+        )
+        results_count_row = await conn.fetchrow(
+            "SELECT setting_value FROM system_settings WHERE setting_key = 'search_results_count'"
+        )
+
     return templates.TemplateResponse("settings.html", {
         "request": request,
         "user": user,
         "mcp_token": config.security.mcp_auth_token,
-        "mcp_port": config.server.mcp_port
+        "mcp_port": config.server.mcp_port,
+        "search_engine": search_engine_row["setting_value"] if search_engine_row else "duckduckgo",
+        "searx_instance_url": searx_url_row["setting_value"] if searx_url_row else "https://searx.be",
+        "search_results_count": int(results_count_row["setting_value"]) if results_count_row else 10
     })
 
 
@@ -439,6 +598,87 @@ async def regenerate_token(user: str = Depends(require_auth)):
     # Note: In production, this would update the config and restart the MCP server
     new_token = secrets.token_hex(32)
     return JSONResponse({"token": new_token})
+
+
+@app.post("/api/settings/search")
+async def save_search_settings(
+    request: Request,
+    user: str = Depends(require_auth)
+):
+    """Save search engine settings"""
+    data = await request.json()
+
+    search_engine = data.get("search_engine", "duckduckgo")
+    searx_url = data.get("searx_instance_url", "https://searx.be")
+    results_count = data.get("search_results_count", 10)
+
+    # Validate
+    valid_engines = ["duckduckgo", "searx", "qwant", "startpage"]
+    if search_engine not in valid_engines:
+        return JSONResponse({
+            "success": False,
+            "error": f"Invalid search engine. Must be one of: {', '.join(valid_engines)}"
+        })
+
+    if not isinstance(results_count, int) or results_count < 1 or results_count > 50:
+        return JSONResponse({
+            "success": False,
+            "error": "Results count must be between 1 and 50"
+        })
+
+    # Save to database
+    async with db.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO system_settings (setting_key, setting_value, setting_type, description)
+            VALUES ('search_engine', $1, 'string', 'Default web search engine')
+            ON CONFLICT (setting_key) DO UPDATE SET setting_value = $1, updated_at = CURRENT_TIMESTAMP
+        """, search_engine)
+
+        await conn.execute("""
+            INSERT INTO system_settings (setting_key, setting_value, setting_type, description)
+            VALUES ('searx_instance_url', $1, 'string', 'SearX instance URL')
+            ON CONFLICT (setting_key) DO UPDATE SET setting_value = $1, updated_at = CURRENT_TIMESTAMP
+        """, searx_url)
+
+        await conn.execute("""
+            INSERT INTO system_settings (setting_key, setting_value, setting_type, description)
+            VALUES ('search_results_count', $1, 'integer', 'Default number of search results')
+            ON CONFLICT (setting_key) DO UPDATE SET setting_value = $1, updated_at = CURRENT_TIMESTAMP
+        """, str(results_count))
+
+    return JSONResponse({
+        "success": True,
+        "message": "Search settings saved successfully",
+        "settings": {
+            "search_engine": search_engine,
+            "searx_instance_url": searx_url,
+            "search_results_count": results_count
+        }
+    })
+
+
+@app.get("/api/settings/search")
+async def get_search_settings(user: str = Depends(require_auth)):
+    """Get search engine settings"""
+    async with db.acquire() as conn:
+        search_engine_row = await conn.fetchrow(
+            "SELECT setting_value FROM system_settings WHERE setting_key = 'search_engine'"
+        )
+        searx_url_row = await conn.fetchrow(
+            "SELECT setting_value FROM system_settings WHERE setting_key = 'searx_instance_url'"
+        )
+        results_count_row = await conn.fetchrow(
+            "SELECT setting_value FROM system_settings WHERE setting_key = 'search_results_count'"
+        )
+
+    return JSONResponse({
+        "success": True,
+        "settings": {
+            "search_engine": search_engine_row["setting_value"] if search_engine_row else "duckduckgo",
+            "searx_instance_url": searx_url_row["setting_value"] if searx_url_row else "https://searx.be",
+            "search_results_count": int(results_count_row["setting_value"]) if results_count_row else 10
+        }
+    })
 
 
 # Health check
