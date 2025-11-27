@@ -5,6 +5,8 @@ A secure Model Context Protocol (MCP) server with an elegant admin web interface
 <img width="685" height="690" alt="grafik" src="https://github.com/user-attachments/assets/abc77549-a259-4a00-9cbc-e76b47d113ba" />
 <img width="1590" height="925" alt="grafik" src="https://github.com/user-attachments/assets/94059339-4713-4510-86e1-f548106e5458" />
 <img width="1590" height="925" alt="grafik" src="https://github.com/user-attachments/assets/77bdba9a-e063-46f7-b74d-a9e631a874b6" />
+<img width="417" height="247" alt="grafik" src="https://github.com/user-attachments/assets/5a7c965b-1517-435c-b88e-ed73caed053a" />
+
 
 ## Features
 
