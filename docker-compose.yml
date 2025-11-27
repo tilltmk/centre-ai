@@ -1,93 +1,175 @@
+# Centre AI - MCP Server with Admin UI
+# Docker Compose Configuration
+# Port Range: 2068+ (chronologically assigned)
+# Only MCP (2068) and Admin UI (2069) are exposed to localhost
+
 version: '3.8'
 
 services:
-  # Centre AI Python Application
-  centre-ai:
+  # ========================================
+  # MCP Server - Port 2068 (exposed to localhost)
+  # ========================================
+  mcp-server:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: centre-ai-app
+      dockerfile: Dockerfile.mcp
+    container_name: centre-ai-mcp
+    restart: unless-stopped
     ports:
-      - "127.0.0.1:2068:5000"
+      - "127.0.0.1:2068:2068"
     environment:
-      - FLASK_ENV=production
-      - FLASK_HOST=0.0.0.0
-      - FLASK_PORT=5000
-      - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production}
-      - API_KEY=${API_KEY:-dev-api-key-12345}
-      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:-admin}
-      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:-admin}
-      - MEMORY_DB_PATH=/app/mcp_data/memory.db
-      - QDRANT_HOST=http://qdrant:6333
-      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - MCP_PORT=2068
       - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-centre_ai}
       - POSTGRES_USER=${POSTGRES_USER:-centre_ai}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-centre_ai_password}
-      - GIT_REPOS_PATH=/app/git_repos
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-centre_ai_secure_password}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SECRET_KEY=${SECRET_KEY}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
-      - ./mcp_data:/app/mcp_data
-      - ./logs:/app/logs
+      - ./data:/app/data
       - ./git_repos:/app/git_repos
     networks:
-      - centre-ai-network
+      - centre-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2068/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ========================================
+  # Admin Web UI - Port 2069 (exposed to localhost)
+  # ========================================
+  admin-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+    container_name: centre-ai-admin
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:2069:2069"
+    environment:
+      - ADMIN_PORT=2069
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-centre_ai}
+      - POSTGRES_USER=${POSTGRES_USER:-centre_ai}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-centre_ai_secure_password}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - SECRET_KEY=${SECRET_KEY}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - MCP_PORT=2068
+    volumes:
+      - ./data:/app/data
+      - ./git_repos:/app/git_repos
+    networks:
+      - centre-internal
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:2069/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 30s
 
-  # PostgreSQL Database
+  # ========================================
+  # PostgreSQL Database - INTERNAL ONLY
+  # ========================================
   postgres:
     image: postgres:15-alpine
     container_name: centre-ai-postgres
+    restart: unless-stopped
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-centre_ai}
       - POSTGRES_USER=${POSTGRES_USER:-centre_ai}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-centre_ai_password}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-centre_ai_secure_password}
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     networks:
-      - centre-ai-network
-    restart: unless-stopped
+      - centre-internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-centre_ai}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-centre_ai} -d ${POSTGRES_DB:-centre_ai}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
-  # Qdrant Vector Database
+  # ========================================
+  # Qdrant Vector Database - INTERNAL ONLY
+  # ========================================
   qdrant:
     image: qdrant/qdrant:latest
     container_name: centre-ai-qdrant
-    environment:
-      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+    restart: unless-stopped
     volumes:
       - qdrant-data:/qdrant/storage
     networks:
-      - centre-ai-network
-    restart: unless-stopped
+      - centre-internal
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
+  # ========================================
+  # Redis Cache/Sessions - INTERNAL ONLY
+  # ========================================
+  redis:
+    image: redis:7-alpine
+    container_name: centre-ai-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - centre-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+# ========================================
+# Internal Network (isolated communication)
+# ========================================
 networks:
-  centre-ai-network:
+  centre-internal:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
 
+# ========================================
+# Persistent Volumes
+# ========================================
 volumes:
   postgres-data:
     driver: local
   qdrant-data:
+    driver: local
+  redis-data:
     driver: local

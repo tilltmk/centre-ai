@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Instructions - Centre AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Instructions</h1>
+    <p class="page-subtitle">General guidelines and directives for AI interactions</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Create Instruction</h3>
+    </div>
+    <form method="POST" action="/instructions">
+        <div class="grid-2">
+            <div class="form-group">
+                <label class="form-label">Title</label>
+                <input type="text" name="title" class="form-input" placeholder="Instruction title" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Category</label>
+                <input type="text" name="category" class="form-input" placeholder="e.g., coding, communication">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Content</label>
+            <textarea name="content" class="form-textarea" placeholder="Write the instruction content..." required style="min-height: 150px;"></textarea>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Priority (1-10)</label>
+            <input type="number" name="priority" class="form-input" value="5" min="1" max="10" style="max-width: 100px;">
+        </div>
+        <button type="submit" class="btn btn-primary">Create Instruction</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">All Instructions</h3>
+        <span class="badge badge-info">{{ instructions|length }} total</span>
+    </div>
+    {% if instructions %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Content</th>
+                    <th>Category</th>
+                    <th>Priority</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for instruction in instructions %}
+                <tr>
+                    <td><strong>{{ instruction.title }}</strong></td>
+                    <td style="max-width: 400px;">{{ instruction.content[:150] }}{% if instruction.content|length > 150 %}...{% endif %}</td>
+                    <td><span class="tag">{{ instruction.category or 'general' }}</span></td>
+                    <td>{{ instruction.priority }}/10</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">&#128220;</div>
+        <p>No instructions yet. Create your first instruction above.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

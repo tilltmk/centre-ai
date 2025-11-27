@@ -1,0 +1,59 @@
+# Centre AI - Admin Web UI Dockerfile
+# Elegant admin interface for MCP server management
+
+FROM python:3.11-slim as builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy and install requirements
+COPY requirements.txt .
+RUN pip wheel --no-cache-dir --wheel-dir=/build/wheels -r requirements.txt
+
+
+FROM python:3.11-slim
+
+# Security: Create non-root user
+RUN groupadd -r centre && useradd -r -g centre centre
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy wheels and install
+COPY --from=builder /build/wheels /wheels
+RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
+
+# Copy application code
+COPY mcp_server/ /app/mcp_server/
+COPY admin_ui/ /app/admin_ui/
+
+# Create data directories
+RUN mkdir -p /app/data /app/git_repos && \
+    chown -R centre:centre /app
+
+# Security: Switch to non-root user
+USER centre
+
+# Environment defaults
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV ADMIN_PORT=2069
+
+# Expose Admin UI port
+EXPOSE 2069
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:${ADMIN_PORT}/health || exit 1
+
+# Run Admin UI
+CMD ["python", "-m", "uvicorn", "admin_ui.app:app", "--host", "0.0.0.0", "--port", "2069"]

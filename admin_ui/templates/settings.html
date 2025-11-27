@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Centre AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Settings</h1>
+    <p class="page-subtitle">MCP Server configuration and connection details</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">MCP Authentication Token</h3>
+    </div>
+    <p class="text-sm text-muted mb-2">Use this token to authenticate MCP client connections.</p>
+    <div class="code-block" id="token-display">{{ mcp_token }}</div>
+    <p class="text-xs text-muted mt-2">Keep this token secret. Anyone with this token can access your MCP server.</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Connection Configuration</h3>
+    </div>
+    <p class="text-sm text-muted mb-2">Add this configuration to your MCP client (e.g., Claude Desktop, Cline, etc.):</p>
+    <div class="code-block">
+{
+  "mcpServers": {
+    "centre-ai": {
+      "url": "http://YOUR_SERVER_ADDRESS:{{ mcp_port }}/sse",
+      "transport": "sse",
+      "headers": {
+        "Authorization": "Bearer {{ mcp_token }}"
+      }
+    }
+  }
+}
+    </div>
+    <p class="text-xs text-muted mt-2">Replace YOUR_SERVER_ADDRESS with your actual server IP or domain.</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Available MCP Tools</h3>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Tool</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>create_memory</code></td>
+                    <td>Create a new memory entry in the knowledge base</td>
+                </tr>
+                <tr>
+                    <td><code>get_memory</code></td>
+                    <td>Retrieve memories using semantic search or filters</td>
+                </tr>
+                <tr>
+                    <td><code>get_codebase</code></td>
+                    <td>Search indexed codebases semantically</td>
+                </tr>
+                <tr>
+                    <td><code>capture_codebase</code></td>
+                    <td>Index a local codebase for semantic search</td>
+                </tr>
+                <tr>
+                    <td><code>get_instructions</code></td>
+                    <td>Retrieve configured instructions and guidelines</td>
+                </tr>
+                <tr>
+                    <td><code>who_am_i_talking_to</code></td>
+                    <td>Get administrator profile information</td>
+                </tr>
+                <tr>
+                    <td><code>project_overview</code></td>
+                    <td>Get overview of managed projects</td>
+                </tr>
+                <tr>
+                    <td><code>conversation_overview</code></td>
+                    <td>View recorded conversation history</td>
+                </tr>
+                <tr>
+                    <td><code>web_search</code></td>
+                    <td>Search the web using DuckDuckGo</td>
+                </tr>
+                <tr>
+                    <td><code>get_knowledge_graph</code></td>
+                    <td>Get knowledge graph data for visualization</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Server Information</h3>
+    </div>
+    <div class="table-container">
+        <table>
+            <tbody>
+                <tr>
+                    <td><strong>MCP Server Port</strong></td>
+                    <td>{{ mcp_port }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Protocol</strong></td>
+                    <td>MCP 1.0 (SSE Transport)</td>
+                </tr>
+                <tr>
+                    <td><strong>Version</strong></td>
+                    <td>2.0.0</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
