@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Conversations - Centre AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Conversations</h1>
+    <p class="page-subtitle">Recorded AI conversations and interactions</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Recent Conversations</h3>
+        <span class="badge badge-info">{{ conversations|length }} total</span>
+    </div>
+    {% if conversations %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Session</th>
+                    <th>Title</th>
+                    <th>Summary</th>
+                    <th>Messages</th>
+                    <th>Updated</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for conv in conversations %}
+                <tr>
+                    <td><code style="font-size: 0.75rem;">{{ conv.session_id[:12] }}...</code></td>
+                    <td>{{ conv.title or '-' }}</td>
+                    <td style="max-width: 300px;">{{ conv.summary[:100] if conv.summary else '-' }}{% if conv.summary and conv.summary|length > 100 %}...{% endif %}</td>
+                    <td>{{ conv.message_count }}</td>
+                    <td>{{ conv.updated_at[:10] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">&#128172;</div>
+        <p>No conversations recorded yet. Conversations are created through the MCP API.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

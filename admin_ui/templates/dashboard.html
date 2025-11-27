@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Centre AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-subtitle">Overview of your knowledge management system</p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.memories }}</div>
+        <div class="stat-label">Memories</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.codebases }}</div>
+        <div class="stat-label">Codebases</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.projects }}</div>
+        <div class="stat-label">Projects</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.instructions }}</div>
+        <div class="stat-label">Instructions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.conversations }}</div>
+        <div class="stat-label">Conversations</div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Vector Store Status</h3>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Collection</th>
+                    <th>Vectors</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for name, data in stats.vectors.items() %}
+                <tr>
+                    <td>{{ name }}</td>
+                    <td>{{ data.vectors_count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Quick Actions</h3>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <a href="/memories" class="btn btn-secondary" style="text-align: center;">Add Memory</a>
+            <a href="/codebases" class="btn btn-secondary" style="text-align: center;">Index Codebase</a>
+            <a href="/instructions" class="btn btn-secondary" style="text-align: center;">Add Instruction</a>
+            <a href="/knowledge" class="btn btn-secondary" style="text-align: center;">View Knowledge Graph</a>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">
+        <h3 class="card-title">MCP Connection</h3>
+    </div>
+    <p class="text-sm text-muted mb-2">Connect AI clients to your Centre AI MCP Server using SSE transport.</p>
+    <div class="code-block">
+{
+  "mcpServers": {
+    "centre-ai": {
+      "url": "http://your-server:2068/sse",
+      "transport": "sse",
+      "headers": {
+        "Authorization": "Bearer YOUR_MCP_TOKEN"
+      }
+    }
+  }
+}
+    </div>
+    <p class="text-xs text-muted mt-2">Find your token in <a href="/settings" style="text-decoration: underline;">Settings</a></p>
+</div>
+{% endblock %}

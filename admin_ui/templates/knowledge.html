@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+
+{% block title %}Knowledge Graph - Centre AI{% endblock %}
+
+{% block head %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+    .graph-container {
+        width: 100%;
+        height: 600px;
+        background: var(--gray-50);
+        border: 1px solid var(--gray-200);
+        position: relative;
+    }
+
+    .graph-svg {
+        width: 100%;
+        height: 100%;
+    }
+
+    .node {
+        cursor: pointer;
+    }
+
+    .node circle {
+        stroke: var(--black);
+        stroke-width: 1.5px;
+        transition: all 0.2s;
+    }
+
+    .node:hover circle {
+        stroke-width: 3px;
+    }
+
+    .node text {
+        font-family: var(--font-serif);
+        font-size: 11px;
+        fill: var(--black);
+        pointer-events: none;
+    }
+
+    .link {
+        stroke: var(--gray-300);
+        stroke-opacity: 0.8;
+        fill: none;
+    }
+
+    .link-label {
+        font-size: 9px;
+        fill: var(--gray-500);
+        font-family: var(--font-sans);
+    }
+
+    .graph-controls {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        display: flex;
+        gap: 0.5rem;
+        z-index: 10;
+    }
+
+    .graph-legend {
+        position: absolute;
+        bottom: 1rem;
+        left: 1rem;
+        background: var(--white);
+        padding: 1rem;
+        border: 1px solid var(--gray-200);
+        font-size: 0.75rem;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 1px solid var(--black);
+    }
+
+    .node-tooltip {
+        position: absolute;
+        background: var(--black);
+        color: var(--white);
+        padding: 0.5rem 0.75rem;
+        font-size: 0.75rem;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s;
+        max-width: 250px;
+        z-index: 100;
+    }
+
+    .node-tooltip.visible {
+        opacity: 1;
+    }
+
+    .add-node-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: flex-end;
+    }
+
+    .add-node-form .form-group {
+        margin-bottom: 0;
+        flex: 1;
+        min-width: 150px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Knowledge Graph</h1>
+    <p class="page-subtitle">Visualize and explore your knowledge connections</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Add Knowledge Node</h3>
+    </div>
+    <div class="add-node-form">
+        <div class="form-group">
+            <label class="form-label">Title</label>
+            <input type="text" id="node-title" class="form-input" placeholder="Node title">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Type</label>
+            <select id="node-type" class="form-select">
+                <option value="concept">Concept</option>
+                <option value="person">Person</option>
+                <option value="project">Project</option>
+                <option value="technology">Technology</option>
+                <option value="document">Document</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Content</label>
+            <input type="text" id="node-content" class="form-input" placeholder="Brief description">
+        </div>
+        <button class="btn btn-primary" onclick="addNode()">Add Node</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Add Connection</h3>
+    </div>
+    <div class="add-node-form">
+        <div class="form-group">
+            <label class="form-label">Source Node ID</label>
+            <input type="number" id="edge-source" class="form-input" placeholder="Source ID">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Target Node ID</label>
+            <input type="number" id="edge-target" class="form-input" placeholder="Target ID">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Relationship</label>
+            <input type="text" id="edge-relationship" class="form-input" placeholder="e.g., relates_to, uses">
+        </div>
+        <button class="btn btn-primary" onclick="addEdge()">Add Connection</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Graph Visualization</h3>
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary btn-sm" onclick="resetZoom()">Reset View</button>
+            <button class="btn btn-secondary btn-sm" onclick="loadGraph()">Refresh</button>
+        </div>
+    </div>
+    <div class="graph-container" id="graph-container">
+        <svg class="graph-svg" id="graph-svg"></svg>
+        <div class="graph-legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffffff;"></div>
+                <span>Concept</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #d4d4d4;"></div>
+                <span>Person</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #737373;"></div>
+                <span>Project</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #404040;"></div>
+                <span>Technology</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #171717;"></div>
+                <span>Document</span>
+            </div>
+        </div>
+        <div class="node-tooltip" id="tooltip"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const colorMap = {
+        concept: '#ffffff',
+        person: '#d4d4d4',
+        project: '#737373',
+        technology: '#404040',
+        document: '#171717'
+    };
+
+    let svg, g, simulation, zoom;
+    let nodes = [], links = [];
+
+    function initGraph() {
+        const container = document.getElementById('graph-container');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        svg = d3.select('#graph-svg');
+        svg.selectAll('*').remove();
+
+        // Add zoom behavior
+        zoom = d3.zoom()
+            .scaleExtent([0.1, 4])
+            .on('zoom', (event) => {
+                g.attr('transform', event.transform);
+            });
+
+        svg.call(zoom);
+
+        // Create main group
+        g = svg.append('g');
+
+        // Arrow marker
+        svg.append('defs').append('marker')
+            .attr('id', 'arrowhead')
+            .attr('viewBox', '-0 -5 10 10')
+            .attr('refX', 20)
+            .attr('refY', 0)
+            .attr('orient', 'auto')
+            .attr('markerWidth', 6)
+            .attr('markerHeight', 6)
+            .append('path')
+            .attr('d', 'M 0,-5 L 10,0 L 0,5')
+            .attr('fill', '#a3a3a3');
+
+        // Initialize simulation
+        simulation = d3.forceSimulation()
+            .force('link', d3.forceLink().id(d => d.id).distance(120))
+            .force('charge', d3.forceManyBody().strength(-300))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('collision', d3.forceCollide().radius(40));
+    }
+
+    function updateGraph() {
+        // Links
+        const link = g.selectAll('.link')
+            .data(links, d => `${d.source.id || d.source}-${d.target.id || d.target}`);
+
+        link.exit().remove();
+
+        const linkEnter = link.enter().append('line')
+            .attr('class', 'link')
+            .attr('marker-end', 'url(#arrowhead)');
+
+        // Link labels
+        const linkLabel = g.selectAll('.link-label')
+            .data(links, d => `${d.source.id || d.source}-${d.target.id || d.target}`);
+
+        linkLabel.exit().remove();
+
+        const linkLabelEnter = linkLabel.enter().append('text')
+            .attr('class', 'link-label')
+            .text(d => d.relationship);
+
+        // Nodes
+        const node = g.selectAll('.node')
+            .data(nodes, d => d.id);
+
+        node.exit().remove();
+
+        const nodeEnter = node.enter().append('g')
+            .attr('class', 'node')
+            .call(d3.drag()
+                .on('start', dragStarted)
+                .on('drag', dragged)
+                .on('end', dragEnded))
+            .on('mouseover', showTooltip)
+            .on('mouseout', hideTooltip);
+
+        nodeEnter.append('circle')
+            .attr('r', 15)
+            .attr('fill', d => colorMap[d.type] || '#ffffff');
+
+        nodeEnter.append('text')
+            .attr('dy', 25)
+            .attr('text-anchor', 'middle')
+            .text(d => d.title.substring(0, 15) + (d.title.length > 15 ? '...' : ''));
+
+        // Update simulation
+        simulation.nodes(nodes);
+        simulation.force('link').links(links);
+        simulation.alpha(1).restart();
+
+        simulation.on('tick', () => {
+            g.selectAll('.link')
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+
+            g.selectAll('.link-label')
+                .attr('x', d => (d.source.x + d.target.x) / 2)
+                .attr('y', d => (d.source.y + d.target.y) / 2);
+
+            g.selectAll('.node')
+                .attr('transform', d => `translate(${d.x},${d.y})`);
+        });
+    }
+
+    function dragStarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+    }
+
+    function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+    }
+
+    function dragEnded(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+    }
+
+    function showTooltip(event, d) {
+        const tooltip = document.getElementById('tooltip');
+        tooltip.innerHTML = `<strong>${d.title}</strong><br>Type: ${d.type}<br>ID: ${d.id}${d.content ? '<br>' + d.content : ''}`;
+        tooltip.style.left = (event.pageX + 10) + 'px';
+        tooltip.style.top = (event.pageY - 10) + 'px';
+        tooltip.classList.add('visible');
+    }
+
+    function hideTooltip() {
+        document.getElementById('tooltip').classList.remove('visible');
+    }
+
+    function resetZoom() {
+        svg.transition().duration(750).call(
+            zoom.transform,
+            d3.zoomIdentity
+        );
+    }
+
+    async function loadGraph() {
+        try {
+            const response = await fetch('/api/knowledge-graph');
+            const data = await response.json();
+
+            if (data.success) {
+                nodes = data.nodes;
+                links = data.edges.map(e => ({
+                    source: e.source,
+                    target: e.target,
+                    relationship: e.relationship
+                }));
+                updateGraph();
+            }
+        } catch (error) {
+            console.error('Failed to load graph:', error);
+        }
+    }
+
+    async function addNode() {
+        const title = document.getElementById('node-title').value;
+        const type = document.getElementById('node-type').value;
+        const content = document.getElementById('node-content').value;
+
+        if (!title) {
+            alert('Title is required');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/knowledge-node', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, type, content })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                document.getElementById('node-title').value = '';
+                document.getElementById('node-content').value = '';
+                loadGraph();
+            }
+        } catch (error) {
+            console.error('Failed to add node:', error);
+        }
+    }
+
+    async function addEdge() {
+        const source = parseInt(document.getElementById('edge-source').value);
+        const target = parseInt(document.getElementById('edge-target').value);
+        const relationship = document.getElementById('edge-relationship').value;
+
+        if (!source || !target || !relationship) {
+            alert('All fields are required');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/knowledge-edge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source, target, relationship })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                document.getElementById('edge-source').value = '';
+                document.getElementById('edge-target').value = '';
+                document.getElementById('edge-relationship').value = '';
+                loadGraph();
+            }
+        } catch (error) {
+            console.error('Failed to add edge:', error);
+        }
+    }
+
+    // Initialize on load
+    document.addEventListener('DOMContentLoaded', () => {
+        initGraph();
+        loadGraph();
+    });
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+        initGraph();
+        updateGraph();
+    });
+</script>
+{% endblock %}

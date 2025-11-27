@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Projects - Centre AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Projects</h1>
+    <p class="page-subtitle">Manage your ongoing projects</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Create Project</h3>
+    </div>
+    <form method="POST" action="/projects">
+        <div class="grid-2">
+            <div class="form-group">
+                <label class="form-label">Name</label>
+                <input type="text" name="name" class="form-input" placeholder="Project name" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="active">Active</option>
+                    <option value="paused">Paused</option>
+                    <option value="completed">Completed</option>
+                    <option value="archived">Archived</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-textarea" placeholder="Project description..."></textarea>
+        </div>
+        <div class="grid-2">
+            <div class="form-group">
+                <label class="form-label">Priority (1-10)</label>
+                <input type="number" name="priority" class="form-input" value="5" min="1" max="10">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tags (comma separated)</label>
+                <input type="text" name="tags" class="form-input" placeholder="web, api, frontend">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Create Project</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">All Projects</h3>
+        <span class="badge badge-info">{{ projects|length }} total</span>
+    </div>
+    {% if projects %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                    <th>Tags</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for project in projects %}
+                <tr>
+                    <td><strong>{{ project.name }}</strong></td>
+                    <td>{{ project.description[:100] if project.description else '-' }}{% if project.description and project.description|length > 100 %}...{% endif %}</td>
+                    <td>
+                        {% if project.status == 'active' %}
+                        <span class="badge badge-success">{{ project.status }}</span>
+                        {% elif project.status == 'paused' %}
+                        <span class="badge badge-warning">{{ project.status }}</span>
+                        {% else %}
+                        <span class="badge badge-info">{{ project.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ project.priority }}/10</td>
+                    <td>
+                        {% for tag in project.tags %}
+                        <span class="tag">{{ tag }}</span>
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">&#128221;</div>
+        <p>No projects yet. Create your first project above.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

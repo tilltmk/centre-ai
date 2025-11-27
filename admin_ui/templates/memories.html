@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Memories - Centre AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Memories</h1>
+    <p class="page-subtitle">Stored knowledge and information</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Create Memory</h3>
+    </div>
+    <form method="POST" action="/memories">
+        <div class="form-group">
+            <label class="form-label">Content</label>
+            <textarea name="content" class="form-textarea" placeholder="Enter the memory content..." required></textarea>
+        </div>
+        <div class="grid-2">
+            <div class="form-group">
+                <label class="form-label">Type</label>
+                <select name="memory_type" class="form-select">
+                    <option value="general">General</option>
+                    <option value="fact">Fact</option>
+                    <option value="reminder">Reminder</option>
+                    <option value="context">Context</option>
+                    <option value="preference">Preference</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Importance (1-10)</label>
+                <input type="number" name="importance" class="form-input" value="5" min="1" max="10">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Tags (comma separated)</label>
+            <input type="text" name="tags" class="form-input" placeholder="tag1, tag2, tag3">
+        </div>
+        <button type="submit" class="btn btn-primary">Create Memory</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">All Memories</h3>
+        <span class="badge badge-info">{{ memories|length }} total</span>
+    </div>
+    {% if memories %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Content</th>
+                    <th>Type</th>
+                    <th>Importance</th>
+                    <th>Tags</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for memory in memories %}
+                <tr>
+                    <td style="max-width: 400px;">{{ memory.content[:200] }}{% if memory.content|length > 200 %}...{% endif %}</td>
+                    <td><span class="badge badge-info">{{ memory.memory_type }}</span></td>
+                    <td>{{ memory.importance }}/10</td>
+                    <td>
+                        {% for tag in memory.tags %}
+                        <span class="tag">{{ tag }}</span>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" onclick="confirmDelete('/memories/{{ memory.id }}', 'this memory')">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">&#128218;</div>
+        <p>No memories yet. Create your first memory above.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Administrators - Centre AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Administrators</h1>
+    <p class="page-subtitle">Manage admin profiles visible to AI clients</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Update Your Profile</h3>
+    </div>
+    <form method="POST" action="/admins">
+        <div class="grid-2">
+            <div class="form-group">
+                <label class="form-label">Display Name</label>
+                <input type="text" name="display_name" class="form-input" placeholder="Your full name" value="{{ admins[0].display_name if admins else '' }}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Email</label>
+                <input type="email" name="email" class="form-input" placeholder="your@email.com" value="{{ admins[0].email if admins else '' }}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Bio</label>
+            <textarea name="bio" class="form-textarea" placeholder="A short bio about yourself...">{{ admins[0].bio if admins else '' }}</textarea>
+        </div>
+        <div class="grid-2">
+            <div class="form-group">
+                <label class="form-label">Timezone</label>
+                <input type="text" name="timezone" class="form-input" placeholder="e.g., Europe/Berlin" value="{{ admins[0].timezone if admins else '' }}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Languages (comma separated)</label>
+                <input type="text" name="languages" class="form-input" placeholder="English, German" value="{{ admins[0].languages | join(', ') if admins and admins[0].languages else '' }}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Areas of Expertise (comma separated)</label>
+            <input type="text" name="expertise" class="form-input" placeholder="Python, Web Development, Machine Learning" value="{{ admins[0].expertise | join(', ') if admins and admins[0].expertise else '' }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Update Profile</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">All Administrators</h3>
+    </div>
+    {% if admins %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Display Name</th>
+                    <th>Email</th>
+                    <th>Timezone</th>
+                    <th>Expertise</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for admin in admins %}
+                <tr>
+                    <td><strong>{{ admin.username }}</strong></td>
+                    <td>{{ admin.display_name or '-' }}</td>
+                    <td>{{ admin.email or '-' }}</td>
+                    <td>{{ admin.timezone or '-' }}</td>
+                    <td>
+                        {% for exp in admin.expertise or [] %}
+                        <span class="tag">{{ exp }}</span>
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No administrators configured.</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">About "who_am_i_talking_to"</h3>
+    </div>
+    <p class="text-sm text-muted">
+        The information you configure here is available to AI clients through the <code>who_am_i_talking_to</code> MCP tool.
+        This allows AI assistants to know who they're working with and personalize their responses accordingly.
+    </p>
+</div>
+{% endblock %}
