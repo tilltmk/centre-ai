@@ -28,6 +28,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import config
 from .database import db, vector_store, init_databases
@@ -45,6 +46,21 @@ from .oauth_routes import (
 # Configure logging
 logging.basicConfig(level=getattr(logging, config.server.log_level))
 logger = logging.getLogger("centre-ai-mcp")
+
+
+def add_cors_headers(response: Response) -> Response:
+    """Add CORS headers manually"""
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+    response.headers["Access-Control-Max-Age"] = "86400"
+    return response
+
+
+async def handle_options_request(request: Request) -> Response:
+    """Handle all OPTIONS requests"""
+    response = Response(status_code=200)
+    return add_cors_headers(response)
 
 
 class SecureMCPServer:
@@ -281,8 +297,17 @@ def create_mcp_app() -> Starlette:
                 }
             )
 
-        logger.info(f"SSE connection from {request.client.host}")
+        logger.info(f"SSE connection from {request.client.host} - {request.method}")
 
+        # Handle POST requests as messages
+        if request.method == "POST":
+            return await sse_transport.handle_post_message(
+                request.scope,
+                request.receive,
+                request._send
+            )
+
+        # Handle GET requests as SSE connections
         async with sse_transport.connect_sse(
             request.scope,
             request.receive,
@@ -345,16 +370,281 @@ def create_mcp_app() -> Starlette:
             "vector_stats": vector_stats
         })
 
+    async def connector_metadata(request: Request) -> JSONResponse:
+        """Claude Web Connector Metadata"""
+        # Detect if request comes through HTTPS proxy (like Zoraxy)
+        forwarded_proto = request.headers.get("x-forwarded-proto", "")
+        # Get HTTPS detection domains from environment
+        https_domains = os.getenv("HTTPS_DOMAINS", "").split(",")
+        https_domains = [domain.strip() for domain in https_domains if domain.strip()]
+
+        # Check if domain should use HTTPS
+        domain_uses_https = any(domain in str(request.url.netloc) for domain in https_domains)
+
+        is_https = (
+            forwarded_proto.lower() == "https" or
+            domain_uses_https or
+            request.url.scheme == "https"
+        )
+        scheme = "https" if is_https else request.url.scheme
+        base_url = f"{scheme}://{request.url.netloc}"
+
+        return JSONResponse({
+            "name": "Centre AI Knowledge Server",
+            "description": "AI knowledge management with memory, codebase indexing, and web search capabilities",
+            "version": "2.0.0",
+            "author": "Centre AI Team",
+            "homepage": base_url,
+            "repository": "https://github.com/centre-ai/mcp-server",
+            "license": "MIT",
+            "mcp": {
+                "version": "1.0",
+                "transport": "sse",
+                "endpoint": f"{base_url}/sse"
+            },
+            "oauth": {
+                "authorization_url": f"{base_url}/oauth/authorize",
+                "token_url": f"{base_url}/oauth/token",
+                "scopes": ["read", "write"],
+                "pkce_required": True
+            },
+            "capabilities": [
+                "knowledge_management",
+                "codebase_indexing",
+                "memory_storage",
+                "web_search",
+                "project_management"
+            ],
+            "tools": [
+                {
+                    "name": tool["name"],
+                    "description": tool["description"]
+                }
+                for tool in TOOL_DEFINITIONS
+            ]
+        })
+
+    async def openapi_spec(request: Request) -> JSONResponse:
+        """OpenAPI specification for OpenWebUI integration"""
+        # Detect HTTPS for base URL
+        forwarded_proto = request.headers.get("x-forwarded-proto", "")
+        # Get HTTPS detection domains from environment
+        https_domains = os.getenv("HTTPS_DOMAINS", "").split(",")
+        https_domains = [domain.strip() for domain in https_domains if domain.strip()]
+
+        # Check if domain should use HTTPS
+        domain_uses_https = any(domain in str(request.url.netloc) for domain in https_domains)
+
+        is_https = (
+            forwarded_proto.lower() == "https" or
+            domain_uses_https or
+            request.url.scheme == "https"
+        )
+        scheme = "https" if is_https else request.url.scheme
+        base_url = f"{scheme}://{request.url.netloc}"
+
+        # Generate OpenAPI paths for each MCP tool
+        paths = {}
+        components_schemas = {}
+
+        for tool in TOOL_DEFINITIONS:
+            tool_name = tool["name"]
+            schema = tool["inputSchema"]
+
+            # Create path for each tool
+            paths[f"/tools/{tool_name}"] = {
+                "post": {
+                    "summary": tool["description"],
+                    "operationId": f"call_{tool_name}",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": schema
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Tool execution result",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "success": {"type": "boolean"},
+                                            "data": {"type": "object"},
+                                            "error": {"type": "string"}
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "401": {
+                            "description": "Unauthorized"
+                        },
+                        "500": {
+                            "description": "Server error"
+                        }
+                    },
+                    "security": [{"bearerAuth": []}]
+                }
+            }
+
+            # Store schema for reuse
+            components_schemas[f"{tool_name}Request"] = schema
+
+        response = JSONResponse({
+            "openapi": "3.0.3",
+            "info": {
+                "title": "Centre AI MCP Server",
+                "description": "AI knowledge management with memory, codebase indexing, and web search capabilities",
+                "version": "2.0.0",
+                "contact": {
+                    "name": "Centre AI Team",
+                    "url": base_url
+                },
+                "license": {
+                    "name": "MIT"
+                }
+            },
+            "servers": [
+                {
+                    "url": base_url,
+                    "description": "Centre AI MCP Server"
+                }
+            ],
+            "paths": paths,
+            "components": {
+                "schemas": components_schemas,
+                "securitySchemes": {
+                    "bearerAuth": {
+                        "type": "http",
+                        "scheme": "bearer",
+                        "description": "Bearer authentication using MCP auth token or OAuth access token"
+                    }
+                }
+            },
+            "security": [{"bearerAuth": []}]
+        })
+
+        return response
+
     async def startup():
         """Application startup"""
         logger.info("Initializing databases...")
         await init_databases()
         logger.info("Centre AI MCP Server started")
 
+    async def handle_tool_call(request: Request) -> JSONResponse:
+        """Handle OpenWebUI tool calls via REST API"""
+        if not await verify_auth_token(request):
+            base_url = f"{request.url.scheme}://{request.url.netloc}"
+            response = JSONResponse(
+                {"error": "Unauthorized"},
+                status_code=401,
+                headers={
+                    "WWW-Authenticate": f'Bearer realm="{base_url}", resource="{base_url}/.well-known/oauth-protected-resource"'
+                }
+            )
+            return add_cors_headers(response)
+
+        tool_name = request.path_params["tool_name"]
+
+        # Initialize tools instance for each call
+        tools = MCPTools()
+
+        # Map tool names to handlers
+        tool_map = {
+            "create_memory": tools.create_memory,
+            "get_memory": tools.get_memory,
+            "get_codebase": tools.get_codebase,
+            "capture_codebase": tools.capture_codebase,
+            "get_instructions": tools.get_instructions,
+            "who_am_i_talking_to": tools.who_am_i_talking_to,
+            "project_overview": tools.project_overview,
+            "conversation_overview": tools.conversation_overview,
+            "web_search": tools.web_search,
+            "get_knowledge_graph": tools.get_knowledge_graph
+        }
+
+        if tool_name not in tool_map:
+            response = JSONResponse(
+                {"error": f"Unknown tool: {tool_name}"},
+                status_code=404
+            )
+            return add_cors_headers(response)
+
+        try:
+            body = await request.json()
+            result = await tool_map[tool_name](**body)
+
+            response = JSONResponse({
+                "success": True,
+                "data": result
+            })
+            return add_cors_headers(response)
+
+        except Exception as e:
+            logger.error(f"Tool call error for {tool_name}: {e}")
+            response = JSONResponse(
+                {"success": False, "error": str(e)},
+                status_code=500
+            )
+            return add_cors_headers(response)
+
+    async def debug_routes(request: Request) -> JSONResponse:
+        """Debug: List all routes"""
+        return JSONResponse({
+            "message": "OpenAPI route is working",
+            "openapi_route": "/openapi.json",
+            "tools_route": "/tools/{tool_name}"
+        })
+
+    async def handle_options(request: Request) -> Response:
+        """Handle CORS preflight OPTIONS requests"""
+        return Response(
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Max-Age": "86400"
+            }
+        )
+
+    async def openapi_options(request: Request) -> Response:
+        """Handle CORS preflight for OpenAPI endpoint"""
+        return Response(
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Max-Age": "86400"
+            }
+        )
+
+    async def handle_cors_options(request: Request) -> Response:
+        """Handle all CORS OPTIONS requests"""
+        return Response(
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Max-Age": "86400"
+            }
+        )
+
     routes = [
         Route("/health", health_check),
         Route("/info", server_info),
-        Route("/sse", handle_sse),
+        Route("/connector.json", connector_metadata),  # Claude Web Connector metadata
+        Route("/debug", debug_routes),  # Debug route
+        Route("/openapi.json", openapi_spec, methods=["GET"]),  # OpenWebUI OpenAPI spec
+        Route("/tools/{tool_name}", handle_tool_call, methods=["POST"]),  # OpenWebUI tool endpoints
+        Route("/sse", handle_sse, methods=["GET", "POST"]),
         Route("/messages/", handle_messages, methods=["POST"]),
 
         # OAuth 2.1 Endpoints
@@ -362,22 +652,14 @@ def create_mcp_app() -> Starlette:
         Route("/.well-known/oauth-protected-resource", protected_resource_metadata),
         Route("/oauth/register", oauth_register, methods=["POST"]),
         Route("/oauth/authorize", oauth_authorize),
+        Route("/authorize", oauth_authorize),  # Claude expects this path
         Route("/oauth/token", oauth_token, methods=["POST"]),
         Route("/oauth/revoke", oauth_revoke, methods=["POST"]),
     ]
 
-    middleware = [
-        Middleware(
-            CORSMiddleware,
-            allow_origins=config.security.allowed_origins,
-            allow_methods=["GET", "POST", "OPTIONS"],
-            allow_headers=["*"],
-        )
-    ]
-
+    # No middleware - using manual CORS headers
     app = Starlette(
         routes=routes,
-        middleware=middleware,
         on_startup=[startup]
     )
 

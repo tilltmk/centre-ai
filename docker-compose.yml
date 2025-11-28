@@ -40,11 +40,149 @@ services:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:2068/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ========================================
+  # HTTP Transport Server - Port 2070 (exposed to localhost)
+  # For OpenWebUI, MCPO, and other HTTP-based AI clients
+  # ========================================
+  mcp-http:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    container_name: centre-ai-http
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:2070:2070"
+    environment:
+      - HTTP_PORT=2070
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-centre_ai}
+      - POSTGRES_USER=${POSTGRES_USER:-centre_ai}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-centre_ai_secure_password}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SECRET_KEY=${SECRET_KEY}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./data:/app/data
+      - ./git_repos:/app/git_repos
+    networks:
+      - centre-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "mcp_server.http_server"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2070/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ========================================
+  # SSE Transport Server - Port 2071 (exposed to localhost)
+  # For Claude Desktop and other SSE-based clients
+  # ========================================
+  mcp-sse:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    container_name: centre-ai-sse
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:2071:2071"
+    environment:
+      - SSE_PORT=2071
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-centre_ai}
+      - POSTGRES_USER=${POSTGRES_USER:-centre_ai}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-centre_ai_secure_password}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SECRET_KEY=${SECRET_KEY}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./data:/app/data
+      - ./git_repos:/app/git_repos
+    networks:
+      - centre-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "mcp_server.sse_server"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2071/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ========================================
+  # Streamable HTTP Server - Port 2072 (exposed to localhost)
+  # For real-time streaming and progress tracking
+  # ========================================
+  mcp-stream:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    container_name: centre-ai-stream
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:2072:2072"
+    environment:
+      - STREAM_PORT=2072
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-centre_ai}
+      - POSTGRES_USER=${POSTGRES_USER:-centre_ai}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-centre_ai_secure_password}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SECRET_KEY=${SECRET_KEY}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./data:/app/data
+      - ./git_repos:/app/git_repos
+    networks:
+      - centre-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "mcp_server.streamable_server"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2072/stream/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -84,7 +222,7 @@ services:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:2069/health"]
       interval: 30s

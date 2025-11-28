@@ -342,25 +342,30 @@ class VectorStore:
                 filter_condition = qdrant_models.Filter(must=conditions)
 
         # Run search in executor to ensure it completes properly
-        loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(
-            None,
-            lambda: self.client.search(
-                collection_name=collection,
-                query_vector=query_vector,
-                limit=limit,
-                query_filter=filter_condition
+        try:
+            loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: self.client.query_points(
+                    collection_name=collection,
+                    query=query_vector,
+                    limit=limit,
+                    query_filter=filter_condition
+                ).points
             )
-        )
 
-        return [
-            {
-                "id": str(r.id),
-                "score": r.score,
-                "payload": r.payload
-            }
-            for r in results
-        ]
+            return [
+                {
+                    "id": str(r.id),
+                    "score": r.score,
+                    "payload": r.payload
+                }
+                for r in results
+            ]
+        except Exception as e:
+            logger.error(f"Vector search failed: {e}")
+            # Fallback: return empty results if Qdrant is unavailable
+            return []
 
     async def delete(self, collection: str, id: str):
         """Delete a vector by ID"""

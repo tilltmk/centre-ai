@@ -116,11 +116,11 @@ async def startup():
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    """Main page - redirect to login or dashboard"""
+    """Main page - show login form directly"""
     user = await get_current_user(request)
     if user:
         return RedirectResponse(url="/dashboard", status_code=302)
-    return RedirectResponse(url="/login", status_code=302)
+    return await login_page(request)
 
 
 @app.get("/login", response_class=HTMLResponse)

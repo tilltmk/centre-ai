@@ -57,7 +57,13 @@ class SecurityConfig:
     admin_username: str = "admin"
     admin_password: str = "changeme"
     jwt_expiry_hours: int = 24
-    allowed_origins: list = field(default_factory=lambda: ["*"])
+    allowed_origins: list = field(default_factory=lambda: [
+        "https://claude.ai",
+        "https://*.claude.ai",
+        "http://localhost:*",
+        "http://127.0.0.1:*",
+        "*"  # Allow all origins for OpenWebUI integration
+    ])
 
 
 @dataclass

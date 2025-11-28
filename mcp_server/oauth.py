@@ -5,6 +5,7 @@ Implements RFC 7591 (Dynamic Client Registration), RFC 8707 (Resource Indicators
 import secrets
 import hashlib
 import base64
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from urllib.parse import urlencode, urlparse, parse_qs
@@ -12,6 +13,8 @@ import bcrypt
 
 from .database import db
 from .config import config
+
+logger = logging.getLogger("oauth")
 
 
 class OAuth2Server:
@@ -141,12 +144,27 @@ class OAuth2Server:
             if row["redirect_uri"] != redirect_uri:
                 return None
 
-            # Verify PKCE
-            if not OAuth2Server.verify_pkce(
+            # Verify PKCE (with debug logging for Claude Web compatibility)
+            pkce_valid = OAuth2Server.verify_pkce(
                 code_verifier,
                 row["code_challenge"],
                 row["code_challenge_method"]
-            ):
+            )
+
+            if not pkce_valid:
+                # Log PKCE failure details for debugging
+                logger.error(f"PKCE verification failed:")
+                logger.error(f"  Code verifier: {code_verifier}")
+                logger.error(f"  Stored challenge: {row['code_challenge']}")
+                logger.error(f"  Challenge method: {row['code_challenge_method']}")
+
+                # Generate expected challenge for debugging
+                if row["code_challenge_method"] == "S256":
+                    expected = base64.urlsafe_b64encode(
+                        hashlib.sha256(code_verifier.encode()).digest()
+                    ).decode().rstrip("=")
+                    logger.error(f"  Expected challenge: {expected}")
+
                 return None
 
             # Mark code as used

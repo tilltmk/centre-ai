@@ -4,8 +4,8 @@
 
 # Configuration
 MCP_SERVER_NAME="${1:-centre-ai}"
-SERVER_HOST="${2:-cnull.net}"
-SERVER_PORT="${3:-22068}"
+SERVER_HOST="${2:-localhost}"
+SERVER_PORT="${3:-2071}"
 OUTPUT_FILE="${4:-mcp-config.json}"
 
 # Detect local IP if needed

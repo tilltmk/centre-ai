@@ -156,8 +156,8 @@ async def oauth_authorize(request: Request) -> HTMLResponse:
             status_code=400
         )
 
-    # In production, show consent screen here
-    # For now, auto-approve (simplified for MCP use case)
+    # Auto-approve for Claude Web integration
+    # In production with other clients, implement proper consent screen
 
     # Create authorization code
     try:
@@ -193,9 +193,16 @@ async def oauth_token(request: Request) -> JSONResponse:
     - authorization_code: Exchange code for tokens
     - refresh_token: Refresh access token
     """
+    logger.info("=== TOKEN ENDPOINT CALLED ===")
+    logger.info(f"Request headers: {dict(request.headers)}")
+    logger.info(f"Request method: {request.method}")
+    logger.info(f"Request URL: {request.url}")
     try:
         # Parse form data
         form = await request.form()
+        form_data = dict(form)
+        logger.info(f"Form data: {form_data}")
+
         grant_type = form.get("grant_type")
         client_id = form.get("client_id")
 

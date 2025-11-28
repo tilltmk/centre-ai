@@ -1,0 +1,14 @@
+[{
+  "type": "openapi",
+  "url": "http://localhost:2070/",
+  "spec_type": "url",
+  "spec": "",
+  "path": "openapi.json",
+  "auth_type": "bearer",
+  "key": "aec59177f75f9e699e00ee12a6af3916c6e7ee0765354df1cc5fc2726097e6f9",
+  "info": {
+    "id": "centre-ai-mcp",
+    "name": "Centre AI MCP Server",
+    "description": "AI knowledge management with memory, codebase indexing, and web search capabilities"
+  }
+}]

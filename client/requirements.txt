@@ -1,0 +1,5 @@
+# Centre AI MCP Client Dependencies
+# Lightweight dependencies for standalone client
+
+httpx>=0.25.0
+websockets>=11.0.0
