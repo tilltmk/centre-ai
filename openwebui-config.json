@@ -5,7 +5,7 @@
   "spec": "",
   "path": "openapi.json",
   "auth_type": "bearer",
-  "key": "aec59177f75f9e699e00ee12a6af3916c6e7ee0765354df1cc5fc2726097e6f9",
+  "key": "your_bearer_token_here",
   "info": {
     "id": "centre-ai-mcp",
     "name": "Centre AI MCP Server",

@@ -12,6 +12,10 @@ import asyncpg
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qdrant_models
 from sentence_transformers import SentenceTransformer
+import os
+import sys
+
+# Embedding functionality now integrated directly
 
 from .config import config
 
@@ -218,6 +222,33 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
+                CREATE TABLE IF NOT EXISTS git_projects (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    url TEXT NOT NULL,
+                    local_path TEXT,
+                    branch VARCHAR(100) DEFAULT 'main',
+                    commit_hash VARCHAR(40),
+                    status VARCHAR(50) DEFAULT 'unknown',
+                    indexed_at TIMESTAMP,
+                    last_updated TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(name)
+                );
+
+                CREATE TABLE IF NOT EXISTS mcp_server_configs (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) UNIQUE NOT NULL,
+                    type VARCHAR(50) NOT NULL DEFAULT 'sse',
+                    url TEXT NOT NULL,
+                    api_key TEXT NOT NULL,
+                    config_json JSONB NOT NULL,
+                    is_active BOOLEAN DEFAULT true,
+                    created_by VARCHAR(100),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type);
                 CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories USING GIN(tags);
                 CREATE INDEX IF NOT EXISTS idx_code_files_codebase ON code_files(codebase_id);
@@ -258,7 +289,9 @@ class VectorStore:
     def __init__(self):
         self.client: Optional[QdrantClient] = None
         self.encoder: Optional[SentenceTransformer] = None
-        self._vector_size = 384
+        self.ollama_service = None
+        self.use_ollama = os.getenv("USE_OLLAMA_EMBEDDINGS", "false").lower() == "true"
+        self._vector_size = 768 if self.use_ollama else 384
 
     async def connect(self):
         """Initialize Qdrant client and encoder"""
@@ -266,7 +299,14 @@ class VectorStore:
             url=config.qdrant.url,
             api_key=config.qdrant.api_key
         )
-        self.encoder = SentenceTransformer('all-MiniLM-L6-v2')
+
+        if self.use_ollama:
+            # Initialize Ollama embedding service
+            self.ollama_service = None  # Will be set up if Ollama is available
+        else:
+            # Use traditional SentenceTransformers
+            self.encoder = SentenceTransformer('all-MiniLM-L6-v2')
+
         await self._init_collections()
 
     async def _init_collections(self):
@@ -292,6 +332,31 @@ class VectorStore:
 
     def encode(self, text: str) -> List[float]:
         """Encode text to vector"""
+        if self.use_ollama and self.ollama_service:
+            # For async encoding, we need to handle this differently
+            # This is a sync method, so we'll need to use sync Ollama calls
+            import httpx
+            try:
+                with httpx.Client(timeout=30.0) as client:
+                    response = client.post(
+                        f"{os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')}/api/embed",
+                        json={
+                            "model": os.getenv('OLLAMA_EMBEDDING_MODEL', 'embeddinggemma'),
+                            "input": text
+                        }
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    if "embeddings" in data and data["embeddings"]:
+                        return data["embeddings"][0]
+            except Exception as e:
+                logger.error(f"Ollama embedding failed, falling back to SentenceTransformer: {e}")
+                # Fallback to SentenceTransformer if Ollama fails
+                if not self.encoder:
+                    self.encoder = SentenceTransformer('all-MiniLM-L6-v2')
+                return self.encoder.encode(text).tolist()
+
+        # Use traditional SentenceTransformers
         return self.encoder.encode(text).tolist()
 
     def generate_id(self, text: str) -> str:

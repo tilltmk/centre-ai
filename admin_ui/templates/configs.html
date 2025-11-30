@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Client Configurations - Centre AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Client Configurations</h1>
+    <p class="page-subtitle">Download configuration files for AI clients</p>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Claude Code / Claude Desktop</h3>
+        </div>
+        <p>SSE-Verbindung zum Centre AI MCP Server.</p>
+
+        <div class="mt-4">
+            <h4 class="font-semibold mb-2">SSE Configuration (Empfohlen)</h4>
+            <pre class="bg-gray-100 p-3 rounded text-xs overflow-x-auto"><code id="claude-sse-config">{
+  "mcpServers": {
+    "centre-ai": {
+      "type": "sse",
+      "url": "https://{{ server_host }}/sse",
+      "headers": {
+        "Authorization": "Bearer {{ mcp_token }}"
+      }
+    }
+  }
+}</code></pre>
+            <button onclick="copyConfig('claude-sse-config')" class="btn btn-primary mt-2">Copy Config</button>
+        </div>
+
+        <div class="mt-4">
+            <h4 class="font-semibold mb-2">CLI Command</h4>
+            <pre class="bg-gray-100 p-2 rounded text-xs overflow-x-auto"><code>claude mcp add-json centre-ai '{"type":"sse","url":"https://{{ server_host }}/sse","headers":{"Authorization":"Bearer {{ mcp_token }}"}}'</code></pre>
+        </div>
+
+        <div class="mt-4">
+            <h4 class="font-semibold mb-2">mcp-remote Proxy (Alternative)</h4>
+            <pre class="bg-gray-100 p-3 rounded text-xs overflow-x-auto"><code id="claude-mcp-remote">{
+  "mcpServers": {
+    "centre-ai": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://{{ server_host }}/sse",
+        "--header",
+        "Authorization: Bearer {{ mcp_token }}"
+      ]
+    }
+  }
+}</code></pre>
+            <button onclick="copyConfig('claude-mcp-remote')" class="btn btn-secondary mt-2">Copy mcp-remote Config</button>
+        </div>
+
+        <div class="mt-4">
+            <h4 class="font-semibold mb-2">Config File Locations</h4>
+            <ul class="text-sm space-y-1 text-gray-600">
+                <li><strong>Claude Code:</strong> ~/.claude.json</li>
+                <li><strong>Claude Desktop:</strong> ~/.config/claude-desktop/config.json</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Cursor AI</h3>
+        </div>
+        <p>SSE oder mcp-remote Proxy.</p>
+
+        <div class="mt-4">
+            <h4 class="font-semibold mb-2">SSE Configuration</h4>
+            <pre class="bg-gray-100 p-3 rounded text-xs overflow-x-auto"><code id="cursor-sse-config">{
+  "mcpServers": {
+    "centre-ai": {
+      "url": "https://{{ server_host }}/sse"
+    }
+  }
+}</code></pre>
+            <button onclick="copyConfig('cursor-sse-config')" class="btn btn-primary mt-2">Copy Config</button>
+            <p class="text-xs text-red-600 mt-1">Hinweis: Cursor unterstuetzt keine Auth-Headers bei SSE</p>
+        </div>
+
+        <div class="mt-4">
+            <h4 class="font-semibold mb-2">mcp-remote Proxy (Mit Auth)</h4>
+            <pre class="bg-gray-100 p-3 rounded text-xs overflow-x-auto"><code id="cursor-mcp-remote">{
+  "mcpServers": {
+    "centre-ai": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://{{ server_host }}/sse",
+        "--header",
+        "Authorization: Bearer {{ mcp_token }}"
+      ]
+    }
+  }
+}</code></pre>
+            <button onclick="copyConfig('cursor-mcp-remote')" class="btn btn-secondary mt-2">Copy mcp-remote Config</button>
+        </div>
+
+        <div class="mt-4">
+            <h4 class="font-semibold mb-2">Config File Locations</h4>
+            <ul class="text-sm space-y-1 text-gray-600">
+                <li><strong>Project:</strong> .cursor/mcp.json</li>
+                <li><strong>Global:</strong> ~/.cursor/mcp.json</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title">OpenWebUI Integration</h3>
+    </div>
+
+    <div class="grid-2">
+        <div>
+            <p class="mb-4">Connect OpenWebUI to Centre AI for web-based AI interactions.</p>
+
+            <a href="/configs/openwebui"
+               class="btn btn-primary"
+               download="openwebui-config.json">
+                📥 Download OpenWebUI Config
+            </a>
+            <p class="text-sm text-muted mt-2">
+                Complete configuration for OpenWebUI MCP integration
+            </p>
+        </div>
+
+        <div>
+            <h4 class="font-semibold mb-2">Integration Steps</h4>
+            <ol class="text-sm space-y-1 text-gray-600">
+                <li>1. Download the configuration</li>
+                <li>2. Import into OpenWebUI settings</li>
+                <li>3. Configure your OpenWebUI instance</li>
+                <li>4. Enable Centre AI MCP endpoints</li>
+                <li>5. Start using enhanced AI features</li>
+            </ol>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title">📋 Connection Information</h3>
+    </div>
+
+    <div class="grid-2">
+        <div>
+            <h4 class="font-semibold mb-2">Available Endpoints</h4>
+            <ul class="text-sm space-y-1 font-mono">
+                <li><strong>Admin UI:</strong> https://your-domain.com/</li>
+                <li><strong>HTTP MCP:</strong> https://your-domain.com/http</li>
+                <li><strong>SSE MCP:</strong> https://your-domain.com/sse</li>
+                <li><strong>Stream MCP:</strong> https://your-domain.com/stream</li>
+            </ul>
+        </div>
+
+        <div>
+            <h4 class="font-semibold mb-2">Authentication</h4>
+            <p class="text-sm text-gray-600 mb-2">Use this token for MCP authentication:</p>
+            <div class="bg-gray-100 p-2 rounded font-mono text-sm break-all">
+                {{ mcp_token }}
+            </div>
+            <p class="text-xs text-muted mt-2">
+                Find this token in your <a href="/settings" class="underline">Settings</a> page
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="mt-4 p-4 bg-blue-50 rounded-lg">
+    <h4 class="font-semibold text-blue-800 mb-2">Pro Tips</h4>
+    <ul class="text-sm text-blue-700 space-y-1">
+        <li>SSE transport is required for Claude Code and Cursor</li>
+        <li>Cursor does not support auth headers - use network-level security</li>
+        <li>Claude Code supports Bearer auth in headers</li>
+        <li>Update your token in <a href="/settings" class="underline">Settings</a> if needed</li>
+    </ul>
+</div>
+
+<script>
+function copyConfig(elementId) {
+    const text = document.getElementById(elementId).innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        alert('Configuration copied to clipboard!');
+    });
+}
+</script>
+{% endblock %}

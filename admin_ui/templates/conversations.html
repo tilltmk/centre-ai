@@ -5,44 +5,158 @@
 {% block content %}
 <div class="page-header">
     <h1 class="page-title">Conversations</h1>
-    <p class="page-subtitle">Recorded AI conversations and interactions</p>
+    <p class="page-subtitle">Browse and search imported conversations</p>
 </div>
 
 <div class="card">
     <div class="card-header">
-        <h3 class="card-title">Recent Conversations</h3>
-        <span class="badge badge-info">{{ conversations|length }} total</span>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 class="card-title">Conversation Browser</h3>
+            <div style="display: flex; gap: 1rem;">
+                <input type="text" id="searchInput" placeholder="Search conversations..."
+                       style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 300px;">
+                <select id="typeFilter" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="">All Types</option>
+                    <option value="conversation">Conversations</option>
+                    <option value="project">Projects</option>
+                </select>
+            </div>
+        </div>
     </div>
-    {% if conversations %}
-    <div class="table-container">
-        <table>
-            <thead>
-                <tr>
-                    <th>Session</th>
-                    <th>Title</th>
-                    <th>Summary</th>
-                    <th>Messages</th>
-                    <th>Updated</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for conv in conversations %}
-                <tr>
-                    <td><code style="font-size: 0.75rem;">{{ conv.session_id[:12] }}...</code></td>
-                    <td>{{ conv.title or '-' }}</td>
-                    <td style="max-width: 300px;">{{ conv.summary[:100] if conv.summary else '-' }}{% if conv.summary and conv.summary|length > 100 %}...{% endif %}</td>
-                    <td>{{ conv.message_count }}</td>
-                    <td>{{ conv.updated_at[:10] }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+
+    <div id="conversationList" style="max-height: 70vh; overflow-y: auto;">
+        <!-- Conversations will be loaded here -->
     </div>
-    {% else %}
-    <div class="empty-state">
-        <div class="empty-state-icon">&#128172;</div>
-        <p>No conversations recorded yet. Conversations are created through the MCP API.</p>
-    </div>
-    {% endif %}
 </div>
+
+<!-- Conversation Detail Modal -->
+<div id="conversationModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 8px; width: 90%; max-width: 800px; max-height: 90%; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="padding: 1rem; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+            <h3 id="modalTitle" style="margin: 0;"></h3>
+            <button onclick="closeModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">×</button>
+        </div>
+        <div id="modalContent" style="padding: 1rem; max-height: calc(90vh - 120px); overflow-y: auto;">
+            <!-- Content will be loaded here -->
+        </div>
+    </div>
+</div>
+
+<script>
+let conversations = [];
+let currentSearch = '';
+let currentType = '';
+
+async function loadConversations() {
+    try {
+        const response = await fetch('/api/conversations');
+        conversations = await response.json();
+        renderConversations();
+    } catch (error) {
+        console.error('Error loading conversations:', error);
+        document.getElementById('conversationList').innerHTML = '<p style="padding: 1rem; color: #666;">Error loading conversations</p>';
+    }
+}
+
+function renderConversations() {
+    const filtered = conversations.filter(conv => {
+        const matchesSearch = !currentSearch ||
+            conv.title.toLowerCase().includes(currentSearch.toLowerCase()) ||
+            (conv.summary && conv.summary.toLowerCase().includes(currentSearch.toLowerCase()));
+
+        const matchesType = !currentType ||
+            (currentType === 'project' && conv.title.startsWith('[PROJECT]')) ||
+            (currentType === 'conversation' && !conv.title.startsWith('[PROJECT]'));
+
+        return matchesSearch && matchesType;
+    });
+
+    const html = filtered.map(conv => `
+        <div class="conversation-item" style="border-bottom: 1px solid #eee; padding: 1rem; cursor: pointer; transition: background-color 0.2s;"
+             onclick="openConversation(${conv.id})" onmouseover="this.style.backgroundColor='#f8f9fa'" onmouseout="this.style.backgroundColor='transparent'">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div style="flex: 1;">
+                    <h4 style="margin: 0 0 0.5rem 0; color: #333;">${conv.title}</h4>
+                    <p style="margin: 0; color: #666; font-size: 0.9rem; line-height: 1.4;">${conv.summary || 'No summary available'}</p>
+                </div>
+                <div style="text-align: right; font-size: 0.8rem; color: #999; margin-left: 1rem;">
+                    <div>Messages: ${conv.message_count || 0}</div>
+                    <div>${new Date(conv.created_at).toLocaleDateString()}</div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    document.getElementById('conversationList').innerHTML = html || '<p style="padding: 1rem; color: #666;">No conversations found</p>';
+}
+
+async function openConversation(id) {
+    try {
+        const response = await fetch(`/api/conversations/${id}`);
+        const data = await response.json();
+
+        document.getElementById('modalTitle').textContent = data.conversation.title;
+
+        let content = `
+            <div style="margin-bottom: 1rem;">
+                <strong>Summary:</strong> ${data.conversation.summary || 'No summary'}
+            </div>
+            <div style="margin-bottom: 1rem;">
+                <strong>Created:</strong> ${new Date(data.conversation.created_at).toLocaleString()}
+            </div>
+            <hr style="margin: 1rem 0;">
+        `;
+
+        if (data.messages && data.messages.length > 0) {
+            content += '<h4>Messages:</h4>';
+            data.messages.forEach((msg, i) => {
+                content += `
+                    <div style="margin-bottom: 1rem; padding: 0.75rem; border-left: 3px solid ${msg.role === 'user' ? '#007bff' : '#28a745'}; background: ${msg.role === 'user' ? '#f8f9ff' : '#f8fff8'};">
+                        <strong>${msg.role === 'user' ? 'User' : 'Claude'}:</strong><br>
+                        <div style="margin-top: 0.5rem; white-space: pre-wrap;">${msg.content}</div>
+                    </div>
+                `;
+            });
+        } else {
+            content += '<p>No messages in this conversation.</p>';
+        }
+
+        document.getElementById('modalContent').innerHTML = content;
+        document.getElementById('conversationModal').style.display = 'block';
+    } catch (error) {
+        console.error('Error loading conversation:', error);
+        alert('Error loading conversation details');
+    }
+}
+
+function closeModal() {
+    document.getElementById('conversationModal').style.display = 'none';
+}
+
+document.getElementById('searchInput').addEventListener('input', (e) => {
+    currentSearch = e.target.value;
+    renderConversations();
+});
+
+document.getElementById('typeFilter').addEventListener('change', (e) => {
+    currentType = e.target.value;
+    renderConversations();
+});
+
+// Close modal when clicking outside
+document.getElementById('conversationModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+        closeModal();
+    }
+});
+
+// Load conversations on page load
+loadConversations();
+</script>
+
+<style>
+.conversation-item:hover {
+    background-color: #f8f9fa;
+}
+</style>
 {% endblock %}

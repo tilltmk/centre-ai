@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import hashlib
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -22,6 +23,22 @@ from .config import config
 
 class MCPTools:
     """Collection of all MCP tools"""
+
+    # CRITICAL: Response size limits to prevent context overflow
+    MAX_RESPONSE_SIZE = 50000  # 50k characters max per response
+    MAX_MEMORY_CONTENT_SIZE = 4000  # 4k characters for memory content
+
+    @staticmethod
+    def _limit_response_size(content: str, max_size: int = None) -> dict:
+        """Truncate content if it exceeds size limits"""
+        if max_size is None:
+            max_size = MCPTools.MAX_RESPONSE_SIZE
+
+        if len(content) <= max_size:
+            return {"content": content, "truncated": False, "original_size": len(content)}
+
+        truncated = content[:max_size] + f"\n\n[TRUNCATED - Original: {len(content)} chars, Showing: {max_size} chars]"
+        return {"content": truncated, "truncated": True, "original_size": len(content)}
 
     # ==================== MEMORY TOOLS ====================
 
@@ -161,9 +178,12 @@ class MCPTools:
                 rows = await conn.fetch(sql, *params)
 
                 for row in rows:
+                    # CRITICAL: Limit memory content size in responses
+                    limited_content = MCPTools._limit_response_size(row["content"], MCPTools.MAX_MEMORY_CONTENT_SIZE)
                     results.append({
                         "id": row["id"],
-                        "content": row["content"],
+                        "content": limited_content["content"],
+                        "content_truncated": limited_content["truncated"],
                         "memory_type": row["memory_type"],
                         "importance": row["importance"],
                         "tags": list(row["tags"]) if row["tags"] else [],
@@ -904,6 +924,218 @@ class MCPTools:
             ]
         }
 
+    # ==================== WEB FETCHING & DOCUMENTATION TOOLS ====================
+
+    @staticmethod
+    async def fetch_webpage(
+        url: str,
+        save_as_memory: bool = True,
+        extract_text: bool = True,
+        follow_redirects: bool = True,
+        timeout: int = 30
+    ) -> Dict[str, Any]:
+        """
+        Fetch and optionally save webpage content.
+        """
+        try:
+            import httpx
+            from bs4 import BeautifulSoup
+            from datetime import datetime
+
+            async with httpx.AsyncClient(
+                timeout=timeout,
+                follow_redirects=follow_redirects,
+                headers={"User-Agent": "Centre AI Documentation Bot 1.0"}
+            ) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+
+                content_type = response.headers.get('content-type', '').lower()
+
+                result = {
+                    "url": str(response.url),
+                    "status_code": response.status_code,
+                    "content_type": content_type,
+                    "headers": dict(response.headers),
+                    "raw_content": MCPTools._limit_response_size(response.text)["content"],
+                    "fetched_at": datetime.utcnow().isoformat()
+                }
+
+                # Extract structured content for HTML
+                if 'html' in content_type and extract_text:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+
+                    # Remove script and style elements
+                    for script in soup(["script", "style"]):
+                        script.decompose()
+
+                    result.update({
+                        "title": soup.title.string.strip() if soup.title else "",
+                        "text_content": MCPTools._limit_response_size(soup.get_text().strip(), 10000)["content"],
+                        "links": [{"text": a.get_text().strip(), "href": a.get('href')}
+                                for a in soup.find_all('a', href=True)],
+                        "headings": [{"level": h.name, "text": h.get_text().strip()}
+                                   for h in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])],
+                        "word_count": len(result.get("text_content", "").split())
+                    })
+
+                # Save as memory if requested
+                if save_as_memory and 'html' in content_type:
+                    memory_content = f"Documentation from {url}\n\n"
+                    if result.get("title"):
+                        memory_content += f"Title: {result['title']}\n\n"
+                    memory_content += result.get("text_content", response.text)[:4000]  # Limit size
+
+                    # Create memory entry
+                    await MCPTools.create_memory(
+                        content=memory_content,
+                        memory_type="documentation",
+                        priority=3,
+                        metadata={
+                            "source_url": str(response.url),
+                            "fetched_at": result["fetched_at"],
+                            "content_type": content_type,
+                            "word_count": result.get("word_count", 0)
+                        }
+                    )
+                    result["saved_as_memory"] = True
+
+                return result
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "url": url
+            }
+
+    @staticmethod
+    async def fetch_documentation_site(
+        base_url: str,
+        max_pages: int = 10,
+        save_as_memory: bool = True,
+        include_patterns: List[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Fetch and index an entire documentation website.
+        """
+        import httpx
+        from bs4 import BeautifulSoup
+        from urllib.parse import urljoin, urlparse
+
+        if include_patterns is None:
+            include_patterns = []
+
+        crawled_urls = set()
+        results = []
+        queue = [base_url]
+        base_domain = urlparse(base_url).netloc
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                while queue and len(crawled_urls) < max_pages:
+                    current_url = queue.pop(0)
+
+                    if current_url in crawled_urls:
+                        continue
+
+                    crawled_urls.add(current_url)
+
+                    try:
+                        # Fetch the page
+                        page_result = await MCPTools.fetch_webpage(
+                            url=current_url,
+                            save_as_memory=save_as_memory,
+                            extract_text=True,
+                            follow_redirects=True
+                        )
+
+                        if page_result.get("status_code") == 200:
+                            results.append({
+                                "url": current_url,
+                                "title": page_result.get("title", ""),
+                                "word_count": page_result.get("word_count", 0),
+                                "saved_as_memory": page_result.get("saved_as_memory", False)
+                            })
+
+                            # Extract links for further crawling
+                            for link in page_result.get("links", []):
+                                if link.get("href"):
+                                    full_url = urljoin(current_url, link["href"])
+                                    parsed = urlparse(full_url)
+
+                                    # Only crawl same domain
+                                    if parsed.netloc == base_domain:
+                                        # Check include patterns
+                                        if not include_patterns or any(pattern in full_url for pattern in include_patterns):
+                                            if full_url not in crawled_urls and full_url not in queue:
+                                                queue.append(full_url)
+
+                    except Exception as e:
+                        results.append({
+                            "url": current_url,
+                            "error": str(e)
+                        })
+
+            return {
+                "success": True,
+                "base_url": base_url,
+                "pages_crawled": len(results),
+                "pages_with_errors": len([r for r in results if "error" in r]),
+                "total_words": sum(r.get("word_count", 0) for r in results),
+                "results": results
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "base_url": base_url
+            }
+
+    @staticmethod
+    async def search_saved_documentation(
+        query: str,
+        limit: int = 10,
+        min_relevance: float = 0.3
+    ) -> Dict[str, Any]:
+        """
+        Search through saved documentation memories.
+        """
+        # Use the existing search_memory functionality but filter for documentation
+        search_results = await MCPTools.search_memory(
+            query=query,
+            limit=limit * 2,  # Get more to filter
+            memory_type="documentation",
+            min_similarity=min_relevance
+        )
+
+        if not search_results.get("success"):
+            return search_results
+
+        # Filter and format results specifically for documentation
+        filtered_results = []
+        for result in search_results.get("memories", []):
+            if result.get("memory_type") == "documentation":
+                payload = result.get("payload", {})
+                metadata = payload.get("metadata", {})
+
+                filtered_results.append({
+                    "id": result.get("id"),
+                    "title": result.get("title", "Untitled Documentation"),
+                    "content_preview": result.get("content", "")[:500] + "..." if len(result.get("content", "")) > 500 else result.get("content", ""),
+                    "relevance_score": result.get("similarity_score", 0.0),
+                    "source_url": metadata.get("source_url", ""),
+                    "fetched_at": metadata.get("fetched_at", ""),
+                    "word_count": metadata.get("word_count", 0)
+                })
+
+        return {
+            "query": query,
+            "total_results": len(filtered_results),
+            "results": filtered_results[:limit]
+        }
+
 
 # Tool definitions for MCP protocol
 TOOL_DEFINITIONS = [
@@ -1133,3 +1365,379 @@ TOOL_DEFINITIONS = [
         }
     }
 ]
+
+# Add the new tool schemas to the TOOL_DEFINITIONS list
+TOOL_DEFINITIONS.extend([
+    {
+        "name": "fetch_webpage",
+        "description": "Fetch and optionally save webpage content to memory",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "URL to fetch"
+                },
+                "save_as_memory": {
+                    "type": "boolean",
+                    "description": "Whether to save content as memory",
+                    "default": True
+                },
+                "extract_text": {
+                    "type": "boolean",
+                    "description": "Whether to extract plain text from HTML",
+                    "default": True
+                },
+                "follow_redirects": {
+                    "type": "boolean",
+                    "description": "Whether to follow redirects",
+                    "default": True
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Request timeout in seconds",
+                    "default": 30
+                }
+            },
+            "required": ["url"]
+        }
+    },
+    {
+        "name": "fetch_documentation_site",
+        "description": "Fetch and index an entire documentation website",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "type": "string",
+                    "description": "Base URL of the documentation site"
+                },
+                "max_pages": {
+                    "type": "integer",
+                    "description": "Maximum pages to crawl",
+                    "default": 10
+                },
+                "save_as_memory": {
+                    "type": "boolean",
+                    "description": "Whether to save pages as memories",
+                    "default": True
+                },
+                "include_patterns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "URL patterns to include",
+                    "default": []
+                }
+            },
+            "required": ["base_url"]
+        }
+    },
+    {
+        "name": "search_saved_documentation",
+        "description": "Search through saved documentation memories",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum results",
+                    "default": 10
+                },
+                "min_relevance": {
+                    "type": "number",
+                    "description": "Minimum relevance score",
+                    "default": 0.3
+                }
+            },
+            "required": ["query"]
+        }
+    }
+])
+
+# Extension to MCPTools class with new documentation methods
+class MCPToolsExtensions:
+    @staticmethod
+    async def fetch_webpage(
+        url: str,
+        save_as_memory: bool = True,
+        extract_text: bool = True,
+        follow_redirects: bool = True,
+        timeout: int = 30
+    ) -> Dict[str, Any]:
+        """
+        Fetch and optionally save webpage content.
+
+        Args:
+            url: URL to fetch
+            save_as_memory: Whether to save the content as a memory for future reference
+            extract_text: Whether to extract plain text from HTML
+            follow_redirects: Whether to follow redirects
+            timeout: Request timeout in seconds
+
+        Returns:
+            Webpage content with metadata
+        """
+        try:
+            async with httpx.AsyncClient(
+                timeout=timeout,
+                follow_redirects=follow_redirects,
+                headers={"User-Agent": "Centre AI Documentation Bot 1.0"}
+            ) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+
+                content_type = response.headers.get('content-type', '').lower()
+
+                result = {
+                    "url": str(response.url),
+                    "status_code": response.status_code,
+                    "content_type": content_type,
+                    "headers": dict(response.headers),
+                    "raw_content": MCPTools._limit_response_size(response.text)["content"],
+                    "fetched_at": datetime.utcnow().isoformat()
+                }
+
+                # Extract structured content for HTML
+                if 'html' in content_type:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+
+                    # Extract title
+                    title_elem = soup.find('title')
+                    title = title_elem.get_text(strip=True) if title_elem else url
+
+                    # Extract meta description
+                    meta_desc = soup.find('meta', attrs={'name': 'description'})
+                    description = meta_desc.get('content', '') if meta_desc else ''
+
+                    # Extract main content
+                    if extract_text:
+                        # Remove script and style elements
+                        for script in soup(["script", "style", "nav", "header", "footer", "aside"]):
+                            script.decompose()
+
+                        # Extract text from main content areas
+                        main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content') or soup.find('body')
+                        text_content = main_content.get_text(separator='\n', strip=True) if main_content else soup.get_text(separator='\n', strip=True)
+
+                        result.update({
+                            "title": title,
+                            "description": description,
+                            "text_content": text_content,
+                            "word_count": len(text_content.split()),
+                            "char_count": len(text_content)
+                        })
+
+                    # Extract links
+                    links = []
+                    for link in soup.find_all('a', href=True):
+                        href = link.get('href')
+                        link_text = link.get_text(strip=True)
+                        if href and link_text:
+                            links.append({"url": href, "text": link_text})
+
+                    result["links"] = links[:20]  # Limit to first 20 links
+
+                # Save as memory if requested
+                if save_as_memory and 'title' in result:
+                    memory_content = f"Documentation: {result['title']}\nURL: {url}\nDescription: {result.get('description', '')}\n\nContent:\n{result.get('text_content', '')}"
+
+                    await MCPTools.create_memory(
+                        content=memory_content,
+                        memory_type="documentation",
+                        importance=7,
+                        tags=["documentation", "web", "fetched"],
+                        metadata={
+                            "source_url": url,
+                            "fetched_at": result["fetched_at"],
+                            "content_type": content_type,
+                            "word_count": result.get("word_count", 0)
+                        }
+                    )
+
+                    result["saved_as_memory"] = True
+
+                return {
+                    "success": True,
+                    "data": result
+                }
+
+        except httpx.TimeoutException:
+            return {
+                "success": False,
+                "error": f"Timeout after {timeout} seconds",
+                "url": url
+            }
+        except httpx.HTTPStatusError as e:
+            return {
+                "success": False,
+                "error": f"HTTP {e.response.status_code}: {e.response.reason_phrase}",
+                "url": url
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "url": url
+            }
+
+    @staticmethod
+    async def fetch_documentation_site(
+        base_url: str,
+        max_pages: int = 10,
+        include_patterns: List[str] = None,
+        exclude_patterns: List[str] = None,
+        save_all: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Fetch multiple pages from a documentation site.
+
+        Args:
+            base_url: Base URL of the documentation site
+            max_pages: Maximum number of pages to fetch
+            include_patterns: URL patterns to include (wildcards supported)
+            exclude_patterns: URL patterns to exclude (wildcards supported)
+            save_all: Whether to save all pages as memories
+
+        Returns:
+            Summary of fetched documentation
+        """
+        include_patterns = include_patterns or ["*"]
+        exclude_patterns = exclude_patterns or []
+
+        visited_urls = set()
+        to_visit = [base_url]
+        fetched_pages = []
+
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            while to_visit and len(fetched_pages) < max_pages:
+                current_url = to_visit.pop(0)
+
+                if current_url in visited_urls:
+                    continue
+
+                visited_urls.add(current_url)
+
+                # Check patterns
+                url_matches_include = any(current_url.find(pattern.replace('*', '')) != -1 for pattern in include_patterns)
+                url_matches_exclude = any(current_url.find(pattern.replace('*', '')) != -1 for pattern in exclude_patterns)
+
+                if not url_matches_include or url_matches_exclude:
+                    continue
+
+                try:
+                    response = await client.get(current_url)
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+
+                        # Extract page info
+                        title = soup.find('title')
+                        title_text = title.get_text(strip=True) if title else current_url
+
+                        # Extract text content
+                        for script in soup(["script", "style", "nav", "header", "footer"]):
+                            script.decompose()
+
+                        main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content') or soup.find('body')
+                        text_content = main_content.get_text(separator='\n', strip=True) if main_content else soup.get_text(separator='\n', strip=True)
+
+                        page_data = {
+                            "url": current_url,
+                            "title": title_text,
+                            "content": text_content,
+                            "word_count": len(text_content.split()),
+                            "fetched_at": datetime.utcnow().isoformat()
+                        }
+
+                        fetched_pages.append(page_data)
+
+                        # Save as memory if requested
+                        if save_all:
+                            memory_content = f"Documentation: {title_text}\nURL: {current_url}\n\nContent:\n{text_content}"
+
+                            await MCPTools.create_memory(
+                                content=memory_content,
+                                memory_type="documentation",
+                                importance=6,
+                                tags=["documentation", "bulk-fetch", "site"],
+                                metadata={
+                                    "source_url": current_url,
+                                    "fetched_at": page_data["fetched_at"],
+                                    "word_count": page_data["word_count"],
+                                    "base_site": base_url
+                                }
+                            )
+
+                        # Find more links to explore
+                        if len(fetched_pages) < max_pages:
+                            for link in soup.find_all('a', href=True):
+                                href = link.get('href')
+                                if href:
+                                    # Convert relative URLs to absolute
+                                    if href.startswith('/'):
+                                        from urllib.parse import urljoin
+                                        href = urljoin(current_url, href)
+
+                                    # Only add URLs from the same domain
+                                    if href.startswith(base_url) and href not in visited_urls and href not in to_visit:
+                                        to_visit.append(href)
+
+                except Exception as e:
+                    continue
+
+        return {
+            "success": True,
+            "base_url": base_url,
+            "pages_fetched": len(fetched_pages),
+            "total_words": sum(page["word_count"] for page in fetched_pages),
+            "pages": fetched_pages[:5],  # Return first 5 as sample
+            "saved_as_memories": save_all
+        }
+
+    @staticmethod
+    async def search_saved_documentation(
+        query: str,
+        limit: int = 10,
+        min_relevance: float = 0.3
+    ) -> Dict[str, Any]:
+        """
+        Search through saved documentation memories.
+
+        Args:
+            query: Search query
+            limit: Maximum number of results
+            min_relevance: Minimum relevance score
+
+        Returns:
+            Relevant documentation memories
+        """
+        # Search in vector store for documentation memories
+        vector_results = await vector_store.search(
+            collection=VectorStore.COLLECTION_MEMORIES,
+            query=query,
+            limit=limit * 2,  # Get more to filter
+            filters={"memory_type": "documentation"}
+        )
+
+        # Filter by relevance and format results
+        filtered_results = []
+        for result in vector_results:
+            if result.get("score", 0) >= min_relevance:
+                payload = result.get("payload", {})
+
+                filtered_results.append({
+                    "content": payload.get("content", ""),
+                    "relevance_score": result.get("score", 0),
+                    "source_url": payload.get("metadata", {}).get("source_url", ""),
+                    "fetched_at": payload.get("metadata", {}).get("fetched_at", ""),
+                    "word_count": payload.get("metadata", {}).get("word_count", 0)
+                })
+
+        return {
+            "query": query,
+            "total_results": len(filtered_results),
+            "results": filtered_results[:limit]
+        }

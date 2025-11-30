@@ -1,0 +1,383 @@
+{% extends "base.html" %}
+
+{% block title %}Git Projects - Centre AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">🔗 Git Projects</h1>
+    <p class="page-subtitle">Manage and index Git repositories</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 class="card-title">Repository Management</h3>
+            <!-- Move button inside the Alpine.js context -->
+        </div>
+    </div>
+
+    <div x-data="gitProjects()" x-init="loadProjects()">
+        <!-- Clone Button -->
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 1.5rem;">
+            <button @click="showCloneModal = true" class="btn btn-primary">
+                🔗 Clone Repository
+            </button>
+        </div>
+
+        <!-- Projects List -->
+        <div x-show="!showCloneModal && !showProgress">
+            <div x-show="projects.length === 0" class="empty-state">
+                <div class="empty-state-icon">🏗️</div>
+                <p style="font-size: 1.1rem; margin-bottom: 0.5rem;">No repositories yet</p>
+                <p class="text-sm">Clone your first repository to get started with code indexing</p>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                <template x-for="project in projects" :key="project.id">
+                    <div class="card">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div style="flex: 1;">
+                                <h4 style="font-family: var(--font-serif); font-size: 1.1rem; margin-bottom: 0.5rem;" x-text="project.name"></h4>
+                                <p class="text-sm text-muted" x-text="project.description || 'No description'"></p>
+
+                                <div style="margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.75rem; color: var(--gray-500);">
+                                    <span x-text="'🔗 ' + project.repo_url"></span>
+                                    <span x-text="'📁 ' + (project.local_path || 'Not cloned')"></span>
+                                    <span x-show="project.language" x-text="'💻 ' + project.language"></span>
+                                </div>
+
+                                <div style="margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.75rem;">
+                                    <span style="display: flex; align-items: center;">
+                                        <span style="width: 8px; height: 8px; border-radius: 50%; margin-right: 0.5rem;"
+                                              :style="project.status === 'cloned' ? 'background: #10b981;' :
+                                                     project.status === 'cloning' ? 'background: #f59e0b;' : 'background: var(--gray-400);'"></span>
+                                        <span x-text="project.status || 'unknown'"></span>
+                                    </span>
+                                    <span x-show="project.indexed_at">
+                                        <span x-text="'📑 Indexed: ' + new Date(project.indexed_at).toLocaleString()"></span>
+                                    </span>
+                                    <span x-show="project.file_count">
+                                        <span x-text="'📄 ' + project.file_count + ' files'"></span>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 1rem;">
+                                <button @click="pullRepository(project.id)"
+                                        :disabled="project.status === 'cloning'"
+                                        class="btn btn-sm btn-secondary">
+                                    🔄 Pull
+                                </button>
+                                <button @click="indexRepository(project.id)"
+                                        :disabled="project.status === 'cloning'"
+                                        class="btn btn-sm btn-secondary">
+                                    📑 Index
+                                </button>
+                                <button @click="deleteRepository(project.id)"
+                                        :disabled="project.status === 'cloning'"
+                                        class="btn btn-sm btn-danger">
+                                    🗑️ Delete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Clone Modal -->
+        <div x-show="showCloneModal" class="modal-overlay" :class="{active: showCloneModal}">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 class="modal-title">Clone Git Repository</h3>
+                    <button @click="showCloneModal = false" style="position: absolute; top: 1rem; right: 1rem; background: none; border: none; font-size: 1.5rem; color: var(--gray-500); cursor: pointer;">✕</button>
+                </div>
+
+                <form @submit.prevent="cloneRepository()">
+                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                        <div class="form-group">
+                            <label class="form-label">Repository URL *</label>
+                            <input type="url" x-model="cloneForm.url" required
+                                   placeholder="https://github.com/user/repo.git"
+                                   class="form-input">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Project Name</label>
+                            <input type="text" x-model="cloneForm.name"
+                                   placeholder="Auto-detected from URL"
+                                   class="form-input">
+                            <p class="text-xs text-muted" style="margin-top: 0.25rem;">Leave empty to auto-detect from URL</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Username (for private repos)</label>
+                            <input type="text" x-model="cloneForm.username"
+                                   class="form-input">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Password/Token (for private repos)</label>
+                            <input type="password" x-model="cloneForm.password"
+                                   class="form-input">
+                            <p class="text-xs text-muted" style="margin-top: 0.25rem;">Use personal access token for GitHub</p>
+                        </div>
+
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <input type="checkbox" x-model="cloneForm.autoIndex" id="autoIndex"
+                                   style="margin: 0;">
+                            <label for="autoIndex" class="text-sm">Automatically index after cloning</label>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 2rem; display: flex; justify-content: flex-end; gap: 1rem;">
+                        <button type="button" @click="showCloneModal = false"
+                                class="btn btn-secondary">
+                            Cancel
+                        </button>
+                        <button type="submit" :disabled="!cloneForm.url"
+                                class="btn btn-primary">
+                            Clone Repository
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Progress Modal -->
+        <div x-show="showProgress" class="modal-overlay" :class="{active: showProgress}">
+            <div class="modal">
+                <div style="text-align: center;">
+                    <div style="width: 3rem; height: 3rem; border: 2px solid var(--gray-200); border-top-color: var(--black); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1.5rem;"></div>
+                    <h3 class="modal-title" style="margin-bottom: 1rem;" x-text="progressMessage"></h3>
+                    <div x-show="progressDetails" style="margin-top: 1rem; padding: 1rem; background: var(--gray-100); font-size: 0.75rem; font-family: monospace;">
+                        <pre x-text="progressDetails" style="white-space: pre-wrap; margin: 0;"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+    <div class="card-header">
+        <h3 class="card-title">💡 Git Repository Management</h3>
+    </div>
+
+    <div class="grid-2">
+        <div>
+            <h4 style="font-family: var(--font-serif); font-weight: 400; margin-bottom: 1rem;">Supported Features</h4>
+            <ul class="text-sm" style="color: var(--gray-600); line-height: 1.8;">
+                <li>• Clone public and private repositories</li>
+                <li>• Automatic code indexing for search</li>
+                <li>• Pull latest changes</li>
+                <li>• Multiple language support</li>
+                <li>• Vector embeddings for AI features</li>
+            </ul>
+        </div>
+
+        <div>
+            <h4 style="font-family: var(--font-serif); font-weight: 400; margin-bottom: 1rem;">Authentication</h4>
+            <ul class="text-sm" style="color: var(--gray-600); line-height: 1.8;">
+                <li>• Use username + personal access token for GitHub</li>
+                <li>• GitLab and other providers supported</li>
+                <li>• SSH keys coming in future updates</li>
+                <li>• Credentials are stored securely</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<script>
+function gitProjects() {
+    return {
+        projects: [],
+        showCloneModal: false,
+        showProgress: false,
+        progressMessage: '',
+        progressDetails: '',
+        cloneForm: {
+            url: '',
+            name: '',
+            username: '',
+            password: '',
+            autoIndex: true
+        },
+
+        async loadProjects() {
+            try {
+                const response = await fetch('/api/git/projects');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.projects = data.projects || [];
+                }
+            } catch (error) {
+                console.error('Failed to load projects:', error);
+            }
+        },
+
+        async cloneRepository() {
+            this.showCloneModal = false;
+            this.showProgress = true;
+            this.progressMessage = 'Cloning repository...';
+
+            try {
+                const response = await fetch('/api/git/clone', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.cloneForm)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    this.progressMessage = 'Clone successful!';
+                    setTimeout(() => {
+                        this.showProgress = false;
+                        this.loadProjects();
+                        this.resetCloneForm();
+                    }, 2000);
+                } else {
+                    throw new Error(result.message || 'Clone failed');
+                }
+            } catch (error) {
+                this.progressMessage = 'Clone failed: ' + error.message;
+                this.progressDetails = error.message;
+                setTimeout(() => {
+                    this.showProgress = false;
+                }, 5000);
+            }
+        },
+
+        async pullRepository(projectId) {
+            this.showProgress = true;
+            this.progressMessage = 'Pulling latest changes...';
+
+            try {
+                const response = await fetch(`/api/git/pull/${projectId}`, { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    this.progressMessage = 'Pull successful!';
+                    setTimeout(() => {
+                        this.showProgress = false;
+                        this.loadProjects();
+                    }, 2000);
+                } else {
+                    throw new Error(result.message || 'Pull failed');
+                }
+            } catch (error) {
+                this.progressMessage = 'Pull failed: ' + error.message;
+                setTimeout(() => this.showProgress = false, 3000);
+            }
+        },
+
+        async indexRepository(projectId) {
+            this.showProgress = true;
+            this.progressMessage = 'Indexing repository...';
+
+            try {
+                const response = await fetch(`/api/git/index/${projectId}`, { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    this.progressMessage = 'Indexing complete!';
+                    this.progressDetails = `Indexed ${result.fileCount || 0} files`;
+                    setTimeout(() => {
+                        this.showProgress = false;
+                        this.loadProjects();
+                    }, 2000);
+                } else {
+                    throw new Error(result.message || 'Indexing failed');
+                }
+            } catch (error) {
+                this.progressMessage = 'Indexing failed: ' + error.message;
+                setTimeout(() => this.showProgress = false, 3000);
+            }
+        },
+
+        async deleteRepository(projectId) {
+            if (!confirm('Delete this repository? This will remove all local files and index data.')) {
+                return;
+            }
+
+            this.showProgress = true;
+            this.progressMessage = 'Deleting repository...';
+
+            try {
+                const response = await fetch(`/api/git/delete/${projectId}`, { method: 'DELETE' });
+                const result = await response.json();
+
+                if (result.success) {
+                    this.progressMessage = 'Repository deleted!';
+                    setTimeout(() => {
+                        this.showProgress = false;
+                        this.loadProjects();
+                    }, 1500);
+                } else {
+                    throw new Error(result.message || 'Delete failed');
+                }
+            } catch (error) {
+                this.progressMessage = 'Delete failed: ' + error.message;
+                setTimeout(() => this.showProgress = false, 3000);
+            }
+        },
+
+        resetCloneForm() {
+            this.cloneForm = {
+                url: '',
+                name: '',
+                username: '',
+                password: '',
+                autoIndex: true
+            };
+        }
+    };
+}
+
+// Alpine.js handles the component lifecycle automatically
+</script>
+
+<style>
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn:disabled:hover {
+    background: inherit;
+    border-color: inherit;
+}
+
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-overlay.active {
+    display: flex;
+}
+
+.modal {
+    position: relative;
+    background: var(--white);
+    width: 100%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 2rem;
+}
+</style>
+{% endblock %}

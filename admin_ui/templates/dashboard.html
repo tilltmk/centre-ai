@@ -59,11 +59,46 @@
             <h3 class="card-title">Quick Actions</h3>
         </div>
         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <a href="/conversations" class="btn btn-primary" style="text-align: center;">💬 Browse Conversations</a>
             <a href="/memories" class="btn btn-secondary" style="text-align: center;">Add Memory</a>
+            <div style="display: flex; gap: 0.5rem;">
+                <button onclick="quickInstruction()" class="btn btn-warning" style="flex: 1; text-align: center;">⚡ Quick Instruction</button>
+                <button onclick="autoMemory()" class="btn btn-info" style="flex: 1; text-align: center;">🧠 Auto Memory</button>
+            </div>
             <a href="/codebases" class="btn btn-secondary" style="text-align: center;">Index Codebase</a>
             <a href="/instructions" class="btn btn-secondary" style="text-align: center;">Add Instruction</a>
             <a href="/knowledge" class="btn btn-secondary" style="text-align: center;">View Knowledge Graph</a>
+            <a href="/configs" class="btn btn-primary" style="text-align: center;">📱 Client Configurations</a>
+            <a href="/git-projects" class="btn btn-success" style="text-align: center;">🔗 Git Projects</a>
         </div>
+
+        <script>
+        function quickInstruction() {
+            const instruction = prompt("Quick instruction for Claude:");
+            if (instruction) {
+                fetch('/api/quick-instruction', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({instruction: instruction, priority: 7})
+                }).then(r => r.json()).then(data => {
+                    alert(data.success ? 'Instruction stored!' : 'Error: ' + data.error);
+                });
+            }
+        }
+
+        function autoMemory() {
+            const content = prompt("Content for auto memory creation:");
+            if (content) {
+                fetch('/api/auto-memory', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({content: content})
+                }).then(r => r.json()).then(data => {
+                    alert(data.success ? 'Memory created: ' + data.memory_created : 'Error: ' + data.error);
+                });
+            }
+        }
+        </script>
     </div>
 </div>
 

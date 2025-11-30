@@ -60,3 +60,54 @@ logs/
 git_repos/
 .env
 *.env
+
+# Import folder
+import/
+
+# Sensible Daten
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+secrets/
+config/secrets/
+*.secret
+*_secret
+*_secrets
+credentials/
+.credentials
+auth/
+.auth
+
+# Cookies und Sessions
+cookies.txt
+*.cookies
+session_*
+.session
+
+# HAR-Dateien (können sensible Request-Daten enthalten)
+*.har
+
+# SSH Keys
+*.rsa
+*.dsa
+*.ecdsa
+*.ed25519
+id_*
+known_hosts
+
+# Backup-Dateien
+*.bak
+*.backup
+*.old
+*.broken
+
+# Temporäre Dateien
+tmp/
+temp/
+.tmp/
+
+# Cache-Dateien
+.cache/
+cache/

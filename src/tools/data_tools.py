@@ -80,6 +80,41 @@ class DataTools:
                     'items': {'type': 'array', 'required': True, 'description': 'List of items'}
                 },
                 'handler': self.list_unique
+            },
+            {
+                'name': 'import_claude_data',
+                'description': 'Import Claude conversation data from JSON files into proper conversation storage',
+                'parameters': {
+                    'import_path': {'type': 'string', 'required': True, 'description': 'Path to import folder containing JSON files'}
+                },
+                'handler': self.import_claude_data
+            },
+            {
+                'name': 'store_direct_instruction',
+                'description': 'Store direct instructions for Claude to remember',
+                'parameters': {
+                    'instruction': {'type': 'string', 'required': True, 'description': 'Instruction text'},
+                    'category': {'type': 'string', 'required': False, 'description': 'Category of instruction', 'default': 'general'},
+                    'priority': {'type': 'integer', 'required': False, 'description': 'Priority level 1-10', 'default': 5}
+                },
+                'handler': self.store_direct_instruction
+            },
+            {
+                'name': 'auto_create_memory',
+                'description': 'Automatically create memories from conversation context',
+                'parameters': {
+                    'content': {'type': 'string', 'required': True, 'description': 'Content to analyze and create memory from'},
+                    'context': {'type': 'string', 'required': False, 'description': 'Additional context'}
+                },
+                'handler': self.auto_create_memory
+            },
+            {
+                'name': 'import_har_file',
+                'description': 'Import conversation data from HAR (HTTP Archive) files',
+                'parameters': {
+                    'har_file_path': {'type': 'string', 'required': True, 'description': 'Path to HAR file'}
+                },
+                'handler': self.import_har_file
             }
         ]
 
@@ -241,6 +276,237 @@ class DataTools:
                 'unique_count': len(unique_items),
                 'duplicates_removed': len(items) - len(unique_items)
             }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def import_claude_data(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Import Claude conversation data into proper conversation storage"""
+        import_path = params.get('import_path', '')
+
+        try:
+            import os
+            import asyncpg
+            import asyncio
+            import uuid
+
+            # Check if import path exists
+            if not os.path.exists(import_path):
+                return {
+                    'success': False,
+                    'error': f'Import path not found: {import_path}'
+                }
+
+            # Get database connection string
+            db_url = f"postgresql://{os.getenv('POSTGRES_USER', 'centre_ai')}:{os.getenv('POSTGRES_PASSWORD', 'centre_ai_password')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/{os.getenv('POSTGRES_DB', 'centre_ai')}"
+
+            async def run_import():
+                conn = await asyncpg.connect(db_url)
+
+                results = {
+                    'success': True,
+                    'imported_files': [],
+                    'errors': [],
+                    'total_conversations': 0,
+                    'total_projects': 0
+                }
+
+                # Import conversations into conversations table
+                conv_file = os.path.join(import_path, 'conversationsclaude.json')
+                if os.path.exists(conv_file):
+                    try:
+                        with open(conv_file, 'r', encoding='utf-8') as f:
+                            conv_data = json.load(f)
+
+                        conv_imported = 0
+                        for conv in conv_data:
+                            try:
+                                # Use original UUID with prefix to avoid conflicts
+                                session_id = f"claude_import_{conv.get('uuid', str(uuid.uuid4()))}"
+
+                                # Count messages
+                                message_count = len(conv.get('chat_messages', []))
+
+                                # Insert into conversations table
+                                conversation_id = await conn.fetchval("""
+                                    INSERT INTO conversations (session_id, title, summary, participants, message_count, metadata)
+                                    VALUES ($1, $2, $3, $4, $5, $6)
+                                    RETURNING id
+                                """,
+                                session_id,
+                                conv.get('name', 'Imported Conversation'),
+                                conv.get('summary', 'Imported from Claude export')[:500] if conv.get('summary') else 'Imported from Claude export',
+                                ['claude', 'user'],
+                                message_count,
+                                json.dumps({
+                                    'source': 'claude_export',
+                                    'original_id': conv.get('uuid', ''),
+                                    'created_at': conv.get('created_at', ''),
+                                    'updated_at': conv.get('updated_at', '')
+                                }))
+
+                                # Insert messages into messages table if they exist
+                                if 'chat_messages' in conv and conv['chat_messages']:
+                                    for i, msg in enumerate(conv['chat_messages']):
+                                        await conn.execute("""
+                                            INSERT INTO messages (conversation_id, role, content, metadata)
+                                            VALUES ($1, $2, $3, $4)
+                                        """,
+                                        conversation_id,
+                                        msg.get('sender', 'user'),
+                                        msg.get('text', '')[:10000],  # Limit content length
+                                        json.dumps({
+                                            'sequence': i,
+                                            'original_data': {k: v for k, v in msg.items() if k != 'text'},
+                                            'source': 'claude_export'
+                                        }))
+
+                                conv_imported += 1
+                                if conv_imported % 50 == 0:  # Progress indicator
+                                    print(f"Imported {conv_imported} conversations...")
+
+                            except Exception as e:
+                                results['errors'].append(f'Error importing conversation {conv.get("uuid", "unknown")}: {str(e)}')
+                                continue
+
+                        results['total_conversations'] = conv_imported
+                        results['imported_files'].append('conversationsclaude.json')
+
+                    except Exception as e:
+                        results['errors'].append(f'Error importing conversations: {str(e)}')
+
+                # Import projects into conversations with project type
+                proj_file = os.path.join(import_path, 'projects.json')
+                if os.path.exists(proj_file):
+                    try:
+                        with open(proj_file, 'r', encoding='utf-8') as f:
+                            proj_data = json.load(f)
+
+                        proj_imported = 0
+                        for proj in proj_data:
+                            try:
+                                # Use original UUID with prefix for projects
+                                session_id = f"claude_project_{proj.get('uuid', str(uuid.uuid4()))}"
+
+                                await conn.execute("""
+                                    INSERT INTO conversations (session_id, title, summary, participants, message_count, metadata)
+                                    VALUES ($1, $2, $3, $4, $5, $6)
+                                """,
+                                session_id,
+                                f"[PROJECT] {proj.get('name', 'Imported Project')}",
+                                proj.get('description', 'Project imported from Claude export')[:500] if proj.get('description') else 'Project imported from Claude export',
+                                ['claude', 'user'],
+                                0,  # Projects don't have messages
+                                json.dumps({
+                                    'source': 'claude_export',
+                                    'type': 'project',
+                                    'original_id': proj.get('uuid', ''),
+                                    'created_at': proj.get('created_at', '')
+                                }))
+
+                                proj_imported += 1
+
+                            except Exception as e:
+                                results['errors'].append(f'Error importing project {proj.get("uuid", "unknown")}: {str(e)}')
+                                continue
+
+                        results['total_projects'] = proj_imported
+                        results['imported_files'].append('projects.json')
+
+                    except Exception as e:
+                        results['errors'].append(f'Error importing projects: {str(e)}')
+
+                await conn.close()
+                return results
+
+            return asyncio.run(run_import())
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def store_direct_instruction(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Store direct instructions for Claude"""
+        instruction = params.get('instruction', '')
+        category = params.get('category', 'general')
+        priority = params.get('priority', 5)
+
+        try:
+            import os
+            import asyncpg
+            import asyncio
+
+            db_url = f"postgresql://{os.getenv('POSTGRES_USER', 'centre_ai')}:{os.getenv('POSTGRES_PASSWORD', 'centre_ai_password')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/{os.getenv('POSTGRES_DB', 'centre_ai')}"
+
+            async def store_instruction():
+                conn = await asyncpg.connect(db_url)
+
+                await conn.execute("""
+                    INSERT INTO memories (content, memory_type, importance, tags, metadata)
+                    VALUES ($1, $2, $3, $4, $5)
+                """, instruction, 'instruction', priority, [category, 'claude_instruction'], json.dumps({
+                    'type': 'direct_instruction',
+                    'category': category,
+                    'priority': priority
+                }))
+
+                await conn.close()
+                return {
+                    'success': True,
+                    'message': f'Instruction stored with priority {priority}'
+                }
+
+            return asyncio.run(store_instruction())
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def auto_create_memory(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Automatically create memories from conversation context"""
+        content = params.get('content', '')
+        context = params.get('context', '')
+
+        try:
+            import os
+            import asyncpg
+            import asyncio
+
+            # Simple memory extraction logic - could be enhanced with AI
+            if len(content) < 50:
+                return {'success': False, 'error': 'Content too short for memory creation'}
+
+            # Extract key information (simplified)
+            memory_content = content[:200] + "..." if len(content) > 200 else content
+
+            db_url = f"postgresql://{os.getenv('POSTGRES_USER', 'centre_ai')}:{os.getenv('POSTGRES_PASSWORD', 'centre_ai_password')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/{os.getenv('POSTGRES_DB', 'centre_ai')}"
+
+            async def create_memory():
+                conn = await asyncpg.connect(db_url)
+
+                await conn.execute("""
+                    INSERT INTO memories (content, memory_type, importance, tags, metadata)
+                    VALUES ($1, $2, $3, $4, $5)
+                """, memory_content, 'auto_generated', 5, ['auto', 'conversation'], json.dumps({
+                    'type': 'auto_memory',
+                    'context': context,
+                    'source_length': len(content)
+                }))
+
+                await conn.close()
+                return {
+                    'success': True,
+                    'memory_created': memory_content
+                }
+
+            return asyncio.run(create_memory())
+
         except Exception as e:
             return {
                 'success': False,

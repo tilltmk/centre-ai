@@ -484,6 +484,24 @@ class HTTPTransport:
 
             return openapi_schema
 
+        # Add client download routes
+        @self.app.get("/client/{filename}")
+        async def download_client(filename: str):
+            """Download Centre AI client files"""
+            import os
+            client_dir = os.path.join(os.path.dirname(__file__), "..", "client")
+            file_path = os.path.join(client_dir, filename)
+
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                from starlette.responses import FileResponse
+                return FileResponse(
+                    path=file_path,
+                    filename=filename,
+                    media_type="text/plain" if filename.endswith(".py") else "application/octet-stream"
+                )
+
+            raise HTTPException(status_code=404, detail="Client file not found")
+
 # ==================== HTTP TRANSPORT INSTANCE ====================
 
 # Global HTTP transport instance

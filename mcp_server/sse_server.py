@@ -13,8 +13,9 @@ from typing import Optional
 
 import uvicorn
 from starlette.applications import Starlette
-from starlette.routing import Route, Mount
-from starlette.responses import Response
+from starlette.requests import Request
+from starlette.routing import Route
+from starlette.responses import Response, JSONResponse
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 
@@ -24,7 +25,6 @@ from .config import config
 from .database import init_databases, close_databases
 from .server import SecureMCPServer
 
-# Configure logging
 logging.basicConfig(
     level=getattr(logging, config.server.log_level),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -37,55 +37,77 @@ class SSEServer:
 
     def __init__(self, host: str = None, port: int = None):
         self.host = host or config.server.mcp_host
-        self.port = port or int(os.getenv("SSE_PORT", 2071))  # Different port for SSE
+        self.port = port or int(os.getenv("SSE_PORT", 2071))
         self.mcp_server = SecureMCPServer()
         self.server: Optional[uvicorn.Server] = None
         self.shutdown_event = asyncio.Event()
+        self.sse_transport = SseServerTransport("/messages")
         self.app = self._create_app()
 
     def _create_app(self) -> Starlette:
         """Create SSE application"""
 
-        async def handle_sse(request):
-            """Handle SSE connections for MCP"""
+        sse_transport = self.sse_transport
+        mcp_server = self.mcp_server
 
-            # Create SSE transport
-            async with SseServerTransport("/messages") as (read_stream, write_stream):
-                # Run MCP server with SSE transport
-                await self.mcp_server.server.run(
+        async def handle_sse(request: Request):
+            """Handle SSE connections for MCP"""
+            logger.info(f"SSE connection from {request.client.host if request.client else 'unknown'}")
+
+            async with sse_transport.connect_sse(
+                request.scope,
+                request.receive,
+                request._send,
+            ) as (read_stream, write_stream):
+                await mcp_server.server.run(
                     read_stream,
                     write_stream,
-                    self.mcp_server.server.create_initialization_options()
+                    mcp_server.server.create_initialization_options()
                 )
+            return Response()
 
-        async def handle_health(request):
+        class MessagesRoute(Route):
+            """Custom route that handles ASGI app directly without redirect"""
+            async def handle(self, scope, receive, send):
+                if scope["method"] == "POST":
+                    await sse_transport.handle_post_message(scope, receive, send)
+                else:
+                    response = Response(status_code=405)
+                    await response(scope, receive, send)
+
+        async def handle_health(request: Request):
             """Health check for SSE server"""
-            return Response(
-                content='{"status":"healthy","transport":"sse","timestamp":"' +
-                       asyncio.get_event_loop().time().__str__() + '"}',
-                media_type="application/json"
-            )
+            return JSONResponse({
+                "status": "healthy",
+                "transport": "sse",
+                "server": "Centre AI MCP"
+            })
 
-        async def handle_info(request):
+        async def handle_info(request: Request):
             """SSE server information"""
-            return Response(
-                content='{"name":"Centre AI MCP SSE Server","version":"2.0.0","transport":"SSE","compatible_with":["Claude Desktop","MCP Clients","SSE-based tools"]}',
-                media_type="application/json"
-            )
+            return JSONResponse({
+                "name": "Centre AI MCP SSE Server",
+                "version": "2.0.0",
+                "transport": "SSE",
+                "endpoints": {
+                    "sse": "/sse",
+                    "messages": "/messages",
+                    "health": "/health"
+                },
+                "compatible_with": ["Claude Desktop", "Claude Code", "MCP Clients"]
+            })
 
-        # Define routes
         routes = [
             Route("/", handle_info),
             Route("/health", handle_health),
             Route("/sse", handle_sse),
-            Route("/messages", handle_sse),  # Alternative endpoint
+            MessagesRoute("/messages", endpoint=lambda r: Response()),
         ]
 
-        # CORS middleware
         middleware = [
             Middleware(
                 CORSMiddleware,
-                allow_origins=config.security.allowed_origins,
+                allow_origins=["*"],
                 allow_credentials=True,
                 allow_methods=["GET", "POST", "OPTIONS"],
                 allow_headers=["*"]
@@ -99,13 +121,10 @@ class SSEServer:
         logger.info("Starting MCP SSE Server...")
 
         try:
-            # Initialize databases
             await init_databases()
             logger.info("Database connections initialized")
-
             logger.info(f"SSE server ready at http://{self.host}:{self.port}")
             logger.info(f"SSE endpoint: http://{self.host}:{self.port}/sse")
-            logger.info(f"Claude Desktop compatible: ws://{self.host}:{self.port}/messages")
 
         except Exception as e:
             logger.error(f"SSE startup failed: {e}")
@@ -144,7 +163,6 @@ class SSEServer:
         try:
             await self.startup()
 
-            # Configure uvicorn
             uvicorn_config = uvicorn.Config(
                 app=self.app,
                 host=self.host,
@@ -156,11 +174,7 @@ class SSEServer:
             )
 
             self.server = uvicorn.Server(uvicorn_config)
-
-            # Setup signal handlers
             self.setup_signal_handlers()
-
-            # Start server
             await self.server.serve()
 
         except Exception as e:
@@ -183,5 +197,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    # Run the SSE server
     asyncio.run(main())

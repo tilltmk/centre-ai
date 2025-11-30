@@ -1,13 +1,15 @@
 """
 OAuth 2.1 HTTP Endpoints for MCP Server
 Implements authorization, token, and registration endpoints
+Compatible with Claude.ai MCP Connectors
 """
 from datetime import datetime
 from typing import Optional
 from urllib.parse import urlencode, urlparse, parse_qs
+import os
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, HTMLResponse
+from starlette.responses import JSONResponse, RedirectResponse, HTMLResponse, Response
 from starlette.exceptions import HTTPException
 
 from .oauth import OAuth2Server, get_authorization_server_metadata, get_protected_resource_metadata
@@ -17,12 +19,18 @@ import logging
 logger = logging.getLogger("oauth-routes")
 
 
+CLAUDE_CALLBACK_URLS = [
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://claude.com/api/mcp/auth_callback"
+]
+
+
 async def oauth_metadata(request: Request) -> JSONResponse:
     """
     OAuth 2.0 Authorization Server Metadata (RFC 8414)
     /.well-known/oauth-authorization-server
     """
-    base_url = f"{request.url.scheme}://{request.url.netloc}"
+    base_url = _get_base_url(request)
     metadata = get_authorization_server_metadata(base_url)
     return JSONResponse(metadata)
 
@@ -32,8 +40,8 @@ async def protected_resource_metadata(request: Request) -> JSONResponse:
     OAuth 2.0 Protected Resource Metadata (RFC 8707)
     /.well-known/oauth-protected-resource
     """
-    base_url = f"{request.url.scheme}://{request.url.netloc}"
-    auth_server_url = base_url  # Same server acts as both
+    base_url = _get_base_url(request)
+    auth_server_url = base_url
     metadata = get_protected_resource_metadata(base_url, auth_server_url)
     return JSONResponse(metadata)
 
@@ -193,20 +201,20 @@ async def oauth_token(request: Request) -> JSONResponse:
     - authorization_code: Exchange code for tokens
     - refresh_token: Refresh access token
     """
-    logger.info("=== TOKEN ENDPOINT CALLED ===")
-    logger.info(f"Request headers: {dict(request.headers)}")
-    logger.info(f"Request method: {request.method}")
-    logger.info(f"Request URL: {request.url}")
+    print("=== TOKEN ENDPOINT CALLED ===", flush=True)
+    print(f"Request headers: {dict(request.headers)}", flush=True)
+    print(f"Request method: {request.method}", flush=True)
+    print(f"Request URL: {request.url}", flush=True)
     try:
-        # Parse form data
         form = await request.form()
         form_data = dict(form)
-        logger.info(f"Form data: {form_data}")
+        print(f"Form data: {form_data}", flush=True)
 
         grant_type = form.get("grant_type")
         client_id = form.get("client_id")
 
         if not grant_type or not client_id:
+            print(f"Missing params: grant_type={grant_type}, client_id={client_id}", flush=True)
             return JSONResponse(
                 {"error": "invalid_request", "error_description": "grant_type and client_id are required"},
                 status_code=400
@@ -324,3 +332,85 @@ def _error_redirect(redirect_uri: str, error: str, state: str = "", error_descri
 
     redirect_url = f"{redirect_uri}?{urlencode(params)}"
     return RedirectResponse(url=redirect_url)
+
+
+async def claude_connector_info(request: Request) -> JSONResponse:
+    """
+    Claude Connector endpoint - provides server info for Claude.ai
+    GET /claude
+    """
+    base_url = _get_base_url(request)
+
+    return JSONResponse({
+        "name": "Centre AI",
+        "description": "AI knowledge management with memory, codebase indexing, and web search",
+        "version": "2.0.0",
+        "mcp": {
+            "version": "2025-06-18",
+            "transport": "sse",
+            "endpoint": f"{base_url}/sse"
+        },
+        "oauth": {
+            "authorization_endpoint": f"{base_url}/oauth/authorize",
+            "token_endpoint": f"{base_url}/oauth/token",
+            "registration_endpoint": f"{base_url}/oauth/register",
+            "scopes_supported": ["read", "write"],
+            "response_types_supported": ["code"],
+            "code_challenge_methods_supported": ["S256"],
+            "token_endpoint_auth_methods_supported": ["none", "client_secret_post"]
+        },
+        "client_id": config.security.claude_oauth_client_id,
+        "instructions": {
+            "claude_ai": f"Add this server in Claude.ai → Settings → MCP Connectors using URL: {base_url}/claude",
+            "callback_url": "https://claude.ai/api/mcp/auth_callback"
+        }
+    })
+
+
+async def claude_well_known(request: Request) -> JSONResponse:
+    """
+    /.well-known/mcp.json for Claude auto-discovery
+    """
+    base_url = _get_base_url(request)
+
+    return JSONResponse({
+        "mcp_version": "2025-06-18",
+        "name": "Centre AI",
+        "description": "AI knowledge management server",
+        "server": {
+            "transport": "sse",
+            "url": f"{base_url}/sse"
+        },
+        "authentication": {
+            "type": "oauth2",
+            "oauth": {
+                "authorization_url": f"{base_url}/oauth/authorize",
+                "token_url": f"{base_url}/oauth/token",
+                "registration_url": f"{base_url}/oauth/register",
+                "scopes": ["read", "write"],
+                "pkce_required": True
+            }
+        },
+        "capabilities": {
+            "tools": True,
+            "resources": True,
+            "prompts": True
+        }
+    })
+
+
+def _get_base_url(request: Request) -> str:
+    """Get base URL from request, respecting proxy headers"""
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    forwarded_host = request.headers.get("x-forwarded-host", "")
+
+    if forwarded_host:
+        scheme = forwarded_proto or "https"
+        return f"{scheme}://{forwarded_host}"
+
+    host = request.headers.get("host", request.url.netloc)
+    https_domains = os.getenv("HTTPS_DOMAINS", "cnull.net").split(",")
+    use_https = any(d.strip() in host for d in https_domains) or forwarded_proto == "https"
+    scheme = "https" if use_https else request.url.scheme
+
+    return f"{scheme}://{host}"

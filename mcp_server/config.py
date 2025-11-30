@@ -57,12 +57,16 @@ class SecurityConfig:
     admin_username: str = "admin"
     admin_password: str = "changeme"
     jwt_expiry_hours: int = 24
+    claude_oauth_client_id: str = field(default_factory=lambda: os.getenv("CLAUDE_OAUTH_CLIENT_ID", "claude_centre_ai"))
+    claude_oauth_client_secret: str = field(default_factory=lambda: os.getenv("CLAUDE_OAUTH_CLIENT_SECRET", secrets.token_hex(32)))
     allowed_origins: list = field(default_factory=lambda: [
         "https://claude.ai",
         "https://*.claude.ai",
+        "https://claude.com",
+        "https://*.claude.com",
         "http://localhost:*",
         "http://127.0.0.1:*",
-        "*"  # Allow all origins for OpenWebUI integration
+        "*"
     ])
 
 
@@ -75,6 +79,10 @@ class ServerConfig:
     admin_port: int = 2069
     debug: bool = False
     log_level: str = "INFO"
+    api_domain: str = "localhost"
+    mcp_domain: str = "localhost"
+    admin_domain: str = "localhost"
+    https_domains: list = field(default_factory=list)
 
 
 @dataclass
@@ -123,11 +131,39 @@ class Config:
         config.server.debug = os.getenv("DEBUG", "false").lower() == "true"
         config.server.log_level = os.getenv("LOG_LEVEL", config.server.log_level)
 
+        # Domain configuration
+        config.server.api_domain = os.getenv("API_DOMAIN", config.server.api_domain)
+        config.server.mcp_domain = os.getenv("MCP_DOMAIN", config.server.mcp_domain)
+        config.server.admin_domain = os.getenv("ADMIN_DOMAIN", config.server.admin_domain)
+        https_domains = os.getenv("HTTPS_DOMAINS", "")
+        config.server.https_domains = [d.strip() for d in https_domains.split(",") if d.strip()]
+
         # Paths
         config.data_dir = Path(os.getenv("DATA_DIR", config.data_dir))
         config.git_repos_dir = Path(os.getenv("GIT_REPOS_DIR", config.git_repos_dir))
 
         return config
+
+    def get_api_base_url(self) -> str:
+        """Get the API base URL for OAuth endpoints"""
+        use_https = any(self.server.api_domain.endswith(https_domain) for https_domain in self.server.https_domains)
+        protocol = "https" if use_https else "http"
+        # Include port for non-standard ports
+        if self.server.mcp_port not in [80, 443]:
+            return f"{protocol}://{self.server.api_domain}:{self.server.mcp_port}"
+        return f"{protocol}://{self.server.api_domain}"
+
+    def get_mcp_base_url(self) -> str:
+        """Get the MCP base URL for SSE/WebSocket endpoints"""
+        use_https = any(self.server.mcp_domain.endswith(https_domain) for https_domain in self.server.https_domains)
+        protocol = "https" if use_https else "http"
+        return f"{protocol}://{self.server.mcp_domain}"
+
+    def get_admin_base_url(self) -> str:
+        """Get the Admin base URL for management interface"""
+        use_https = any(self.server.admin_domain.endswith(https_domain) for https_domain in self.server.https_domains)
+        protocol = "https" if use_https else "http"
+        return f"{protocol}://{self.server.admin_domain}"
 
 
 # Global configuration instance

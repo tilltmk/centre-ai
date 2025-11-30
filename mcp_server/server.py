@@ -40,8 +40,11 @@ from .oauth_routes import (
     oauth_register,
     oauth_authorize,
     oauth_token,
-    oauth_revoke
+    oauth_revoke,
+    claude_connector_info,
+    claude_well_known
 )
+from .oauth import ensure_claude_client_registered
 
 # Configure logging
 logging.basicConfig(level=getattr(logging, config.server.log_level))
@@ -534,6 +537,8 @@ def create_mcp_app() -> Starlette:
         """Application startup"""
         logger.info("Initializing databases...")
         await init_databases()
+        logger.info("Registering Claude OAuth client...")
+        await ensure_claude_client_registered()
         logger.info("Centre AI MCP Server started")
 
     async def handle_tool_call(request: Request) -> JSONResponse:
@@ -640,19 +645,23 @@ def create_mcp_app() -> Starlette:
     routes = [
         Route("/health", health_check),
         Route("/info", server_info),
-        Route("/connector.json", connector_metadata),  # Claude Web Connector metadata
-        Route("/debug", debug_routes),  # Debug route
-        Route("/openapi.json", openapi_spec, methods=["GET"]),  # OpenWebUI OpenAPI spec
-        Route("/tools/{tool_name}", handle_tool_call, methods=["POST"]),  # OpenWebUI tool endpoints
+        Route("/connector.json", connector_metadata),
+        Route("/debug", debug_routes),
+        Route("/openapi.json", openapi_spec, methods=["GET"]),
+        Route("/tools/{tool_name}", handle_tool_call, methods=["POST"]),
         Route("/sse", handle_sse, methods=["GET", "POST"]),
         Route("/messages/", handle_messages, methods=["POST"]),
+
+        # Claude Connector Endpoints
+        Route("/claude", claude_connector_info),
+        Route("/.well-known/mcp.json", claude_well_known),
 
         # OAuth 2.1 Endpoints
         Route("/.well-known/oauth-authorization-server", oauth_metadata),
         Route("/.well-known/oauth-protected-resource", protected_resource_metadata),
         Route("/oauth/register", oauth_register, methods=["POST"]),
         Route("/oauth/authorize", oauth_authorize),
-        Route("/authorize", oauth_authorize),  # Claude expects this path
+        Route("/authorize", oauth_authorize),
         Route("/oauth/token", oauth_token, methods=["POST"]),
         Route("/oauth/revoke", oauth_revoke, methods=["POST"]),
     ]

@@ -16,9 +16,11 @@ services:
     container_name: centre-ai-mcp
     restart: unless-stopped
     ports:
-      - "127.0.0.1:2068:2068"
+      - "127.0.0.1:8068:2068"  # Internal access only, proxy handles external
     environment:
       - MCP_PORT=2068
+      - API_DOMAIN=localhost:2068
+      - MCP_DOMAIN=localhost:2068
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-centre_ai}
@@ -28,12 +30,15 @@ services:
       - QDRANT_PORT=6333
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - OLLAMA_BASE_URL=http://ollama:11434
       - SECRET_KEY=${SECRET_KEY}
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./data:/app/data
       - ./git_repos:/app/git_repos
+      - ./import:/app/import
+      - ./src:/app/src
     networks:
       - centre-internal
     depends_on:
@@ -73,12 +78,15 @@ services:
       - QDRANT_PORT=6333
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - OLLAMA_BASE_URL=http://ollama:11434
       - SECRET_KEY=${SECRET_KEY}
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./data:/app/data
       - ./git_repos:/app/git_repos
+      - ./import:/app/import
+      - ./src:/app/src
     networks:
       - centre-internal
     depends_on:
@@ -119,12 +127,15 @@ services:
       - QDRANT_PORT=6333
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - OLLAMA_BASE_URL=http://ollama:11434
       - SECRET_KEY=${SECRET_KEY}
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./data:/app/data
       - ./git_repos:/app/git_repos
+      - ./import:/app/import
+      - ./src:/app/src
     networks:
       - centre-internal
     depends_on:
@@ -165,12 +176,15 @@ services:
       - QDRANT_PORT=6333
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - OLLAMA_BASE_URL=http://ollama:11434
       - SECRET_KEY=${SECRET_KEY}
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./data:/app/data
       - ./git_repos:/app/git_repos
+      - ./import:/app/import
+      - ./src:/app/src
     networks:
       - centre-internal
     depends_on:
@@ -187,6 +201,24 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # ========================================
+  # Reverse Proxy for External Access on Port 2068
+  # ========================================
+  proxy:
+    image: nginx:alpine
+    container_name: centre-ai-proxy
+    restart: unless-stopped
+    ports:
+      - "2068:2068"
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - centre-internal
+    depends_on:
+      - mcp-server
+      - mcp-sse
+      - admin-ui
 
   # ========================================
   # Admin Web UI - Port 2069 (exposed to localhost)
@@ -216,6 +248,8 @@ services:
     volumes:
       - ./data:/app/data
       - ./git_repos:/app/git_repos
+      - ./import:/app/import
+      - ./src:/app/src
     networks:
       - centre-internal
     depends_on:
@@ -266,7 +300,7 @@ services:
     networks:
       - centre-internal
     healthcheck:
-      test: ["CMD", "sh", "-c", "nc -z localhost 6333"]
+      test: ["CMD", "sh", "-c", "wget -q --spider http://localhost:6333/collections || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -291,6 +325,58 @@ services:
       retries: 5
       start_period: 5s
 
+  # ========================================
+  # Ollama AI Model Server - INTERNAL ONLY
+  # ========================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: centre-ai-ollama
+    restart: unless-stopped
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - centre-internal
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -q --spider http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ========================================
+  # JupyterLab - Port 2078 (exposed to localhost)
+  # ========================================
+  jupyter:
+    image: jupyter/scipy-notebook:latest
+    container_name: centre-ai-jupyter
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:2078:8888"
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN:-centre_ai_jupyter}
+      - NB_USER=jovyan
+      - CHOWN_HOME=yes
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./data:/home/jovyan/data:ro
+      - ./git_repos:/home/jovyan/git_repos:ro
+    networks:
+      - centre-internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/api"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 # ========================================
 # Internal Network (isolated communication)
 # ========================================
@@ -310,4 +396,6 @@ volumes:
   qdrant-data:
     driver: local
   redis-data:
+    driver: local
+  ollama-data:
     driver: local

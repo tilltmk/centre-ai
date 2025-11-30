@@ -333,3 +333,48 @@ def get_protected_resource_metadata(base_url: str, auth_server_url: str) -> Dict
         "resource_documentation": f"{base_url}/docs",
         "resource_signing_alg_values_supported": []
     }
+
+
+async def ensure_claude_client_registered():
+    """
+    Ensure Claude.ai is pre-registered as an OAuth client.
+    Called on server startup.
+    """
+    from .config import config
+
+    client_id = config.security.claude_oauth_client_id
+    client_secret = config.security.claude_oauth_client_secret
+
+    try:
+        existing = await OAuth2Server.get_client(client_id)
+        if existing:
+            logger.info(f"Claude OAuth client already registered: {client_id}")
+            return
+
+        async with db.acquire() as conn:
+            client_secret_hash = OAuth2Server.hash_secret(client_secret)
+
+            await conn.execute("""
+                INSERT INTO oauth_clients
+                (client_id, client_secret_hash, client_name, redirect_uris, grant_types, is_public, scope)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (client_id) DO UPDATE SET
+                    client_secret_hash = $2,
+                    redirect_uris = $4
+            """,
+                client_id,
+                client_secret_hash,
+                "Claude",
+                [
+                    "https://claude.ai/api/mcp/auth_callback",
+                    "https://claude.com/api/mcp/auth_callback"
+                ],
+                ["authorization_code", "refresh_token"],
+                True,
+                "read write"
+            )
+
+            logger.info(f"Claude OAuth client registered: {client_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to register Claude OAuth client: {e}")

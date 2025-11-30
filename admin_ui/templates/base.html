@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Centre AI{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
@@ -515,6 +516,7 @@
                 <div class="nav-section">System</div>
                 <a href="/admins" class="nav-item {% if request.url.path == '/admins' %}active{% endif %}">Administrators</a>
                 <a href="/oauth-clients" class="nav-item {% if request.url.path == '/oauth-clients' %}active{% endif %}">OAuth Clients</a>
+                <a href="/mcp-servers" class="nav-item {% if request.url.path == '/mcp-servers' %}active{% endif %}">MCP Servers</a>
                 <a href="/settings" class="nav-item {% if request.url.path == '/settings' %}active{% endif %}">Settings</a>
             </nav>
             <div class="sidebar-footer">
