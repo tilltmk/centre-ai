@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Centre AI - MCP Server Dashboard</title>
+    <title>Centre AI - Knowledge Management</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
@@ -11,12 +11,21 @@
     <nav class="navbar">
         <div class="nav-container">
             <div class="nav-brand">
-                <span class="logo">⚡</span>
+                <span class="logo">&#9889;</span>
                 <span class="brand-name">Centre AI</span>
+            </div>
+            <div class="nav-tabs">
+                <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
+                <button class="nav-tab" data-tab="repositories">Repositories</button>
+                <button class="nav-tab" data-tab="memories">Memories</button>
+                <button class="nav-tab" data-tab="artifacts">Artifacts</button>
+                <button class="nav-tab" data-tab="instructions">Instructions</button>
+                <button class="nav-tab" data-tab="projects">Projects</button>
+                <button class="nav-tab" data-tab="tools">Tools</button>
             </div>
             <div class="nav-controls">
                 <button id="theme-toggle" class="icon-btn" title="Dark Mode umschalten">
-                    <span class="theme-icon">🌙</span>
+                    <span class="theme-icon">&#127769;</span>
                 </button>
             </div>
         </div>
@@ -26,89 +35,438 @@
     <main class="main-content">
         <div class="container">
 
-            <!-- Header Section -->
-            <section class="header-section">
-                <h1 class="page-title">MCP Server Dashboard</h1>
-                <p class="page-subtitle">Model Context Protocol Server für AI Modelle</p>
-            </section>
-
-            <!-- Status Cards -->
-            <section class="cards-grid">
-                <div class="card status-card">
-                    <div class="card-header">
-                        <span class="card-icon">🟢</span>
-                        <h3 class="card-title">Server Status</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="status-indicator">
-                            <span class="status-dot active"></span>
-                            <span class="status-text" id="server-status">Wird geladen...</span>
-                        </div>
-                        <div class="status-details">
-                            <div class="detail-item">
-                                <span class="detail-label">Version:</span>
-                                <span class="detail-value" id="server-version">-</span>
-                            </div>
-                            <div class="detail-item">
-                                <span class="detail-label">Initialisiert:</span>
-                                <span class="detail-value" id="server-initialized">-</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card stats-card">
-                    <div class="card-header">
-                        <span class="card-icon">🛠️</span>
-                        <h3 class="card-title">Tools</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="stat-number" id="tools-count">-</div>
-                        <p class="stat-label">Verfügbare Tools</p>
-                    </div>
-                </div>
-
-                <div class="card stats-card">
-                    <div class="card-header">
-                        <span class="card-icon">💾</span>
-                        <h3 class="card-title">Gedächtnis</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="stat-number" id="memory-count">-</div>
-                        <p class="stat-label">Gespeicherte Einträge</p>
-                    </div>
-                </div>
-
-                <div class="card stats-card">
-                    <div class="card-header">
-                        <span class="card-icon">⚡</span>
-                        <h3 class="card-title">Anfragen</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="stat-number" id="requests-count">-</div>
-                        <p class="stat-label">Gesamte Anfragen</p>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Tools Section -->
-            <section class="tools-section">
+            <!-- Dashboard Tab -->
+            <section id="tab-dashboard" class="tab-content active">
                 <div class="section-header">
-                    <h2 class="section-title">Verfügbare Tools</h2>
-                    <button id="refresh-tools" class="btn btn-secondary">
-                        <span>⟳</span> Aktualisieren
+                    <h1 class="page-title">Dashboard</h1>
+                    <p class="page-subtitle">Centre AI Knowledge Management System</p>
+                </div>
+
+                <div class="cards-grid">
+                    <div class="card status-card">
+                        <div class="card-header">
+                            <span class="card-icon">&#9679;</span>
+                            <h3 class="card-title">Server Status</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="status-indicator">
+                                <span class="status-dot active"></span>
+                                <span class="status-text" id="server-status">Wird geladen...</span>
+                            </div>
+                            <div class="status-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">Version:</span>
+                                    <span class="detail-value" id="server-version">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Initialisiert:</span>
+                                    <span class="detail-value" id="server-initialized">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card stats-card">
+                        <div class="card-header">
+                            <span class="card-icon">&#128736;</span>
+                            <h3 class="card-title">Tools</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="stat-number" id="tools-count">-</div>
+                            <p class="stat-label">Verfugbare Tools</p>
+                        </div>
+                    </div>
+
+                    <div class="card stats-card">
+                        <div class="card-header">
+                            <span class="card-icon">&#128190;</span>
+                            <h3 class="card-title">Memories</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="stat-number" id="memory-count">-</div>
+                            <p class="stat-label">Gespeicherte Eintraege</p>
+                        </div>
+                    </div>
+
+                    <div class="card stats-card">
+                        <div class="card-header">
+                            <span class="card-icon">&#9889;</span>
+                            <h3 class="card-title">Anfragen</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="stat-number" id="requests-count">-</div>
+                            <p class="stat-label">Gesamte Anfragen</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="quick-actions">
+                    <h2 class="section-title">Schnellaktionen</h2>
+                    <div class="action-grid">
+                        <button class="action-btn" onclick="switchTab('repositories')">
+                            <span class="action-icon">&#128193;</span>
+                            <span>Repository klonen</span>
+                        </button>
+                        <button class="action-btn" onclick="switchTab('memories')">
+                            <span class="action-icon">&#128161;</span>
+                            <span>Memory erstellen</span>
+                        </button>
+                        <button class="action-btn" onclick="switchTab('artifacts')">
+                            <span class="action-icon">&#128196;</span>
+                            <span>Artifact speichern</span>
+                        </button>
+                        <button class="action-btn" onclick="switchTab('projects')">
+                            <span class="action-icon">&#128194;</span>
+                            <span>Projekt erstellen</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Repositories Tab -->
+            <section id="tab-repositories" class="tab-content">
+                <div class="section-header">
+                    <h1 class="page-title">Git Repositories</h1>
+                    <button class="btn btn-primary" onclick="showCloneModal()">
+                        <span>+</span> Repository klonen
                     </button>
                 </div>
-                <div class="tools-grid" id="tools-list">
-                    <!-- Tools werden dynamisch geladen -->
+
+                <div class="repos-list" id="repos-list">
+                    <div class="loading-state">Repositories werden geladen...</div>
+                </div>
+
+                <!-- Clone Modal -->
+                <div id="clone-modal" class="modal" style="display: none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2>Repository klonen</h2>
+                            <button class="modal-close" onclick="hideCloneModal()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="repo-url">Repository URL</label>
+                                <input type="text" id="repo-url" class="form-input" placeholder="https://github.com/user/repo.git">
+                            </div>
+                            <div class="form-group">
+                                <label for="repo-branch">Branch</label>
+                                <input type="text" id="repo-branch" class="form-input" value="main" placeholder="main">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="repo-username">Username (optional)</label>
+                                    <input type="text" id="repo-username" class="form-input" placeholder="Username">
+                                </div>
+                                <div class="form-group">
+                                    <label for="repo-password">Password / Token (optional)</label>
+                                    <input type="password" id="repo-password" class="form-input" placeholder="Personal Access Token">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="repo-depth">Shallow Clone Tiefe (optional)</label>
+                                <input type="number" id="repo-depth" class="form-input" placeholder="z.B. 1 fur shallow clone">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="hideCloneModal()">Abbrechen</button>
+                            <button class="btn btn-primary" onclick="cloneRepository()">Klonen</button>
+                        </div>
+                    </div>
                 </div>
             </section>
 
-            <!-- API Test Section -->
-            <section class="api-section">
-                <div class="card api-card">
+            <!-- Memories Tab -->
+            <section id="tab-memories" class="tab-content">
+                <div class="section-header">
+                    <h1 class="page-title">Memories</h1>
+                    <button class="btn btn-primary" onclick="showMemoryModal()">
+                        <span>+</span> Memory erstellen
+                    </button>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="memory-type-filter" class="form-select" onchange="loadMemories()">
+                        <option value="">Alle Typen</option>
+                        <option value="fact">Fakten</option>
+                        <option value="preference">Praferenzen</option>
+                        <option value="context">Kontext</option>
+                        <option value="learning">Gelerntes</option>
+                        <option value="reference">Referenzen</option>
+                        <option value="note">Notizen</option>
+                    </select>
+                    <input type="text" id="memory-search" class="form-input" placeholder="Suchen..." onkeyup="debounce(loadMemories, 300)">
+                </div>
+
+                <div class="memories-list" id="memories-list">
+                    <div class="loading-state">Memories werden geladen...</div>
+                </div>
+
+                <!-- Memory Modal -->
+                <div id="memory-modal" class="modal" style="display: none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 id="memory-modal-title">Memory erstellen</h2>
+                            <button class="modal-close" onclick="hideMemoryModal()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="memory-content">Inhalt</label>
+                                <textarea id="memory-content" class="form-textarea" rows="4" placeholder="Memory-Inhalt..."></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="memory-type">Typ</label>
+                                    <select id="memory-type" class="form-select">
+                                        <option value="fact">Fakt</option>
+                                        <option value="preference">Praferenz</option>
+                                        <option value="context">Kontext</option>
+                                        <option value="learning">Gelernt</option>
+                                        <option value="reference">Referenz</option>
+                                        <option value="note">Notiz</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="memory-importance">Wichtigkeit (1-10)</label>
+                                    <input type="number" id="memory-importance" class="form-input" value="5" min="1" max="10">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="memory-tags">Tags (kommagetrennt)</label>
+                                <input type="text" id="memory-tags" class="form-input" placeholder="tag1, tag2, tag3">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="hideMemoryModal()">Abbrechen</button>
+                            <button class="btn btn-primary" onclick="saveMemory()">Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Artifacts Tab -->
+            <section id="tab-artifacts" class="tab-content">
+                <div class="section-header">
+                    <h1 class="page-title">Artifacts</h1>
+                    <button class="btn btn-primary" onclick="showArtifactModal()">
+                        <span>+</span> Artifact erstellen
+                    </button>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="artifact-type-filter" class="form-select" onchange="loadArtifacts()">
+                        <option value="">Alle Typen</option>
+                        <option value="code">Code</option>
+                        <option value="document">Dokument</option>
+                        <option value="config">Konfiguration</option>
+                        <option value="data">Daten</option>
+                        <option value="diagram">Diagramm</option>
+                        <option value="template">Template</option>
+                    </select>
+                    <input type="text" id="artifact-search" class="form-input" placeholder="Suchen..." onkeyup="debounce(loadArtifacts, 300)">
+                </div>
+
+                <div class="artifacts-list" id="artifacts-list">
+                    <div class="loading-state">Artifacts werden geladen...</div>
+                </div>
+
+                <!-- Artifact Modal -->
+                <div id="artifact-modal" class="modal" style="display: none;">
+                    <div class="modal-content modal-large">
+                        <div class="modal-header">
+                            <h2 id="artifact-modal-title">Artifact erstellen</h2>
+                            <button class="modal-close" onclick="hideArtifactModal()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="artifact-title">Titel</label>
+                                <input type="text" id="artifact-title" class="form-input" placeholder="Artifact-Titel">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="artifact-type">Typ</label>
+                                    <select id="artifact-type" class="form-select" onchange="updateArtifactLanguage()">
+                                        <option value="code">Code</option>
+                                        <option value="document">Dokument</option>
+                                        <option value="config">Konfiguration</option>
+                                        <option value="data">Daten</option>
+                                        <option value="diagram">Diagramm</option>
+                                        <option value="template">Template</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" id="language-group">
+                                    <label for="artifact-language">Sprache</label>
+                                    <select id="artifact-language" class="form-select">
+                                        <option value="python">Python</option>
+                                        <option value="javascript">JavaScript</option>
+                                        <option value="typescript">TypeScript</option>
+                                        <option value="java">Java</option>
+                                        <option value="go">Go</option>
+                                        <option value="rust">Rust</option>
+                                        <option value="sql">SQL</option>
+                                        <option value="html">HTML</option>
+                                        <option value="css">CSS</option>
+                                        <option value="shell">Shell</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="artifact-content">Inhalt</label>
+                                <textarea id="artifact-content" class="form-textarea code-editor" rows="12" placeholder="Artifact-Inhalt..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="artifact-tags">Tags (kommagetrennt)</label>
+                                <input type="text" id="artifact-tags" class="form-input" placeholder="tag1, tag2, tag3">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="hideArtifactModal()">Abbrechen</button>
+                            <button class="btn btn-primary" onclick="saveArtifact()">Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Instructions Tab -->
+            <section id="tab-instructions" class="tab-content">
+                <div class="section-header">
+                    <h1 class="page-title">Instructions</h1>
+                    <button class="btn btn-primary" onclick="showInstructionModal()">
+                        <span>+</span> Instruction erstellen
+                    </button>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="instruction-scope-filter" class="form-select" onchange="loadInstructions()">
+                        <option value="">Alle Scopes</option>
+                        <option value="global">Global</option>
+                        <option value="project">Projekt</option>
+                        <option value="session">Session</option>
+                    </select>
+                </div>
+
+                <div class="instructions-list" id="instructions-list">
+                    <div class="loading-state">Instructions werden geladen...</div>
+                </div>
+
+                <!-- Instruction Modal -->
+                <div id="instruction-modal" class="modal" style="display: none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 id="instruction-modal-title">Instruction erstellen</h2>
+                            <button class="modal-close" onclick="hideInstructionModal()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="instruction-title">Titel</label>
+                                <input type="text" id="instruction-title" class="form-input" placeholder="Instruction-Titel">
+                            </div>
+                            <div class="form-group">
+                                <label for="instruction-content">Inhalt</label>
+                                <textarea id="instruction-content" class="form-textarea" rows="4" placeholder="Instruction-Inhalt..."></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="instruction-category">Kategorie</label>
+                                    <input type="text" id="instruction-category" class="form-input" placeholder="z.B. coding, communication">
+                                </div>
+                                <div class="form-group">
+                                    <label for="instruction-scope">Scope</label>
+                                    <select id="instruction-scope" class="form-select">
+                                        <option value="global">Global</option>
+                                        <option value="project">Projekt</option>
+                                        <option value="session">Session</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="instruction-priority">Prioritat (1-10)</label>
+                                <input type="number" id="instruction-priority" class="form-input" value="5" min="1" max="10">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="hideInstructionModal()">Abbrechen</button>
+                            <button class="btn btn-primary" onclick="saveInstruction()">Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Projects Tab -->
+            <section id="tab-projects" class="tab-content">
+                <div class="section-header">
+                    <h1 class="page-title">Projects</h1>
+                    <button class="btn btn-primary" onclick="showProjectModal()">
+                        <span>+</span> Projekt erstellen
+                    </button>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="project-status-filter" class="form-select" onchange="loadProjects()">
+                        <option value="">Alle Status</option>
+                        <option value="active">Aktiv</option>
+                        <option value="paused">Pausiert</option>
+                        <option value="completed">Abgeschlossen</option>
+                        <option value="archived">Archiviert</option>
+                    </select>
+                </div>
+
+                <div class="projects-list" id="projects-list">
+                    <div class="loading-state">Projekte werden geladen...</div>
+                </div>
+
+                <!-- Project Modal -->
+                <div id="project-modal" class="modal" style="display: none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 id="project-modal-title">Projekt erstellen</h2>
+                            <button class="modal-close" onclick="hideProjectModal()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="project-name">Name</label>
+                                <input type="text" id="project-name" class="form-input" placeholder="Projekt-Name">
+                            </div>
+                            <div class="form-group">
+                                <label for="project-description">Beschreibung</label>
+                                <textarea id="project-description" class="form-textarea" rows="3" placeholder="Projekt-Beschreibung..."></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="project-priority">Prioritat (1-10)</label>
+                                    <input type="number" id="project-priority" class="form-input" value="5" min="1" max="10">
+                                </div>
+                                <div class="form-group">
+                                    <label for="project-tags">Tags (kommagetrennt)</label>
+                                    <input type="text" id="project-tags" class="form-input" placeholder="tag1, tag2">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="hideProjectModal()">Abbrechen</button>
+                            <button class="btn btn-primary" onclick="saveProject()">Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tools Tab -->
+            <section id="tab-tools" class="tab-content">
+                <div class="section-header">
+                    <h1 class="page-title">MCP Tools</h1>
+                    <button id="refresh-tools" class="btn btn-secondary" onclick="loadTools()">
+                        <span>&#8635;</span> Aktualisieren
+                    </button>
+                </div>
+
+                <div class="tools-grid" id="tools-list">
+                    <div class="loading-state">Tools werden geladen...</div>
+                </div>
+
+                <!-- API Tester -->
+                <div class="card api-card" style="margin-top: 2rem;">
                     <div class="card-header">
-                        <span class="card-icon">🧪</span>
+                        <span class="card-icon">&#128295;</span>
                         <h3 class="card-title">API Tester</h3>
                     </div>
                     <div class="card-body">
@@ -117,16 +475,16 @@
                             <input type="password" id="api-key-input" class="form-input" placeholder="Dein API Key">
                         </div>
                         <div class="form-group">
-                            <label for="tool-select">Tool auswählen</label>
+                            <label for="tool-select">Tool auswahlen</label>
                             <select id="tool-select" class="form-select">
-                                <option value="">-- Tool wählen --</option>
+                                <option value="">-- Tool wahlen --</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label for="params-input">Parameter (JSON)</label>
                             <textarea id="params-input" class="form-textarea" rows="4" placeholder='{"text": "Beispiel"}'></textarea>
                         </div>
-                        <button id="execute-tool" class="btn btn-primary">Tool ausführen</button>
+                        <button id="execute-tool" class="btn btn-primary" onclick="executeTool()">Tool ausfuhren</button>
                         <div id="api-result" class="api-result" style="display: none;">
                             <h4>Ergebnis:</h4>
                             <pre id="api-result-content"></pre>
@@ -135,39 +493,16 @@
                 </div>
             </section>
 
-            <!-- Documentation Section -->
-            <section class="docs-section">
-                <div class="card docs-card">
-                    <div class="card-header">
-                        <span class="card-icon">📚</span>
-                        <h3 class="card-title">Authentifizierung</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="auth-methods">
-                            <div class="auth-method">
-                                <h4>API Key</h4>
-                                <code>curl -H "X-API-Key: dein-key" http://localhost:5000/mcp/tools/list</code>
-                            </div>
-                            <div class="auth-method">
-                                <h4>Bearer Token</h4>
-                                <code>curl -H "Authorization: Bearer dein-token" http://localhost:5000/mcp/tools/list</code>
-                            </div>
-                            <div class="auth-method">
-                                <h4>Basic Auth</h4>
-                                <code>curl -u username:password http://localhost:5000/mcp/tools/list</code>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
         </div>
     </main>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
 
     <!-- Footer -->
     <footer class="footer">
         <div class="container">
-            <p>&copy; 2024 Centre AI - MCP Server Dashboard</p>
+            <p>&copy; 2024 Centre AI - Knowledge Management System</p>
         </div>
     </footer>
 

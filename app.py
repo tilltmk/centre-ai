@@ -374,6 +374,299 @@ def search_code():
 
 
 # ============================================================================
+# Git Repository Routes
+# ============================================================================
+
+@app.route('/api/git/repos', methods=['GET'])
+@require_auth
+def list_git_repos():
+    """List all cloned Git repositories"""
+    try:
+        result = mcp_server.execute_tool('git_list_repos', {}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/git/clone', methods=['POST'])
+@require_auth
+def clone_git_repo():
+    """Clone a Git repository"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('git_clone', {
+            'repo_url': data.get('repo_url'),
+            'branch': data.get('branch', 'main'),
+            'depth': data.get('depth'),
+            'username': data.get('username'),
+            'password': data.get('password'),
+            'ssh_key_path': data.get('ssh_key_path')
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/git/repos/<repo_name>', methods=['DELETE'])
+@require_auth
+def delete_git_repo(repo_name):
+    """Delete a cloned repository"""
+    try:
+        result = mcp_server.execute_tool('git_delete_repo', {'repo_name': repo_name}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/git/repos/<repo_name>/status', methods=['GET'])
+@require_auth
+def get_git_status(repo_name):
+    """Get repository status"""
+    try:
+        result = mcp_server.execute_tool('git_status', {'repo_name': repo_name}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/git/repos/<repo_name>/pull', methods=['POST'])
+@require_auth
+def pull_git_repo(repo_name):
+    """Pull latest changes"""
+    try:
+        result = mcp_server.execute_tool('git_pull', {'repo_name': repo_name}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/git/repos/<repo_name>/files', methods=['GET'])
+@require_auth
+def list_repo_files(repo_name):
+    """List files in repository"""
+    try:
+        path = request.args.get('path', '.')
+        result = mcp_server.execute_tool('git_list_files', {'repo_name': repo_name, 'path': path}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/git/repos/<repo_name>/index', methods=['POST'])
+@require_auth
+def index_git_repo(repo_name):
+    """Index repository for semantic search"""
+    try:
+        from src.tools.git_tools import GitTools
+        git_tools = GitTools()
+        repo_path = git_tools._get_repo_path(repo_name)
+
+        if not os.path.exists(repo_path):
+            return jsonify({'error': f'Repository {repo_name} not found'}), 404
+
+        indexed_files = code_indexer.index_repository(repo_path, repo_id=repo_name)
+
+        return jsonify({
+            'success': True,
+            'repo_name': repo_name,
+            'indexed_files': indexed_files,
+            'message': f'Indexed {indexed_files} files'
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Artifact Routes
+# ============================================================================
+
+@app.route('/api/artifacts', methods=['GET'])
+@require_auth
+def list_artifacts():
+    """List artifacts"""
+    try:
+        result = mcp_server.execute_tool('artifact_search', {
+            'artifact_type': request.args.get('type'),
+            'project_id': request.args.get('project_id', type=int),
+            'query': request.args.get('query'),
+            'limit': request.args.get('limit', 50, type=int)
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/artifacts', methods=['POST'])
+@require_auth
+def create_artifact():
+    """Create an artifact"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('artifact_create', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/artifacts/<int:artifact_id>', methods=['GET'])
+@require_auth
+def get_artifact(artifact_id):
+    """Get artifact by ID"""
+    try:
+        result = mcp_server.execute_tool('artifact_get', {'artifact_id': artifact_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/artifacts/<int:artifact_id>', methods=['PUT'])
+@require_auth
+def update_artifact(artifact_id):
+    """Update an artifact"""
+    try:
+        data = request.get_json()
+        data['artifact_id'] = artifact_id
+        result = mcp_server.execute_tool('artifact_update', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/artifacts/<int:artifact_id>', methods=['DELETE'])
+@require_auth
+def delete_artifact(artifact_id):
+    """Delete an artifact"""
+    try:
+        result = mcp_server.execute_tool('artifact_delete', {'artifact_id': artifact_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Instruction Routes
+# ============================================================================
+
+@app.route('/api/instructions', methods=['GET'])
+@require_auth
+def list_instructions():
+    """List instructions"""
+    try:
+        result = mcp_server.execute_tool('instruction_list', {
+            'category': request.args.get('category'),
+            'scope': request.args.get('scope'),
+            'include_inactive': request.args.get('include_inactive', 'false').lower() == 'true'
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/instructions', methods=['POST'])
+@require_auth
+def create_instruction():
+    """Create an instruction"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('instruction_create', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/instructions/<int:instruction_id>', methods=['PUT'])
+@require_auth
+def update_instruction(instruction_id):
+    """Update an instruction"""
+    try:
+        data = request.get_json()
+        data['instruction_id'] = instruction_id
+        result = mcp_server.execute_tool('instruction_update', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/instructions/<int:instruction_id>', methods=['DELETE'])
+@require_auth
+def delete_instruction(instruction_id):
+    """Delete an instruction"""
+    try:
+        permanent = request.args.get('permanent', 'false').lower() == 'true'
+        result = mcp_server.execute_tool('instruction_delete', {
+            'instruction_id': instruction_id,
+            'permanent': permanent
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Project Routes
+# ============================================================================
+
+@app.route('/api/projects', methods=['GET'])
+@require_auth
+def list_projects():
+    """List projects"""
+    try:
+        result = mcp_server.execute_tool('project_list', {
+            'status': request.args.get('status')
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/projects', methods=['POST'])
+@require_auth
+def create_project():
+    """Create a project"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('project_create', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/projects/<int:project_id>', methods=['GET'])
+@require_auth
+def get_project(project_id):
+    """Get project with artifacts"""
+    try:
+        result = mcp_server.execute_tool('project_get', {'project_id': project_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/projects/<int:project_id>', methods=['PUT'])
+@require_auth
+def update_project(project_id):
+    """Update a project"""
+    try:
+        data = request.get_json()
+        data['project_id'] = project_id
+        result = mcp_server.execute_tool('project_update', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/projects/<int:project_id>', methods=['DELETE'])
+@require_auth
+def delete_project(project_id):
+    """Delete a project"""
+    try:
+        result = mcp_server.execute_tool('project_delete', {'project_id': project_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
 # Health Check
 # ============================================================================
 

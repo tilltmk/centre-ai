@@ -36,6 +36,7 @@ class MCPServer:
         from src.tools.web_tools import WebTools
         from src.tools.file_tools import FileTools
         from src.tools.git_tools import GitTools
+        from src.tools.ai_tools import AITools
 
         # Register all tool categories
         text_tools = TextTools()
@@ -43,6 +44,7 @@ class MCPServer:
         web_tools = WebTools()
         file_tools = FileTools()
         git_tools = GitTools()
+        ai_tools = AITools()
 
         for tool in text_tools.get_tools():
             self.register_tool(tool)
@@ -57,6 +59,9 @@ class MCPServer:
             self.register_tool(tool)
 
         for tool in git_tools.get_tools():
+            self.register_tool(tool)
+
+        for tool in ai_tools.get_tools():
             self.register_tool(tool)
 
         logger.info(f"Registered {len(self.tools_registry)} tools")

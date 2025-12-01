@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS memories (
 -- ========================================
 CREATE TABLE IF NOT EXISTS codebases (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(200) NOT NULL,
+    name VARCHAR(200) NOT NULL UNIQUE,
     description TEXT,
     repo_url TEXT,
     local_path TEXT,
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS code_files (
 );
 
 -- ========================================
--- INSTRUCTIONS
+-- INSTRUCTIONS (AI-managed directives)
 -- ========================================
 CREATE TABLE IF NOT EXISTS instructions (
     id SERIAL PRIMARY KEY,
@@ -76,8 +76,31 @@ CREATE TABLE IF NOT EXISTS instructions (
     content TEXT NOT NULL,
     category VARCHAR(100),
     priority INTEGER DEFAULT 5 CHECK (priority >= 1 AND priority <= 10),
+    scope VARCHAR(50) DEFAULT 'global',  -- global, project, session
     is_active BOOLEAN DEFAULT true,
+    created_by VARCHAR(100),
     metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ========================================
+-- ARTIFACTS (AI-generated content storage)
+-- ========================================
+CREATE TABLE IF NOT EXISTS artifacts (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(300) NOT NULL,
+    content TEXT NOT NULL,
+    artifact_type VARCHAR(50) NOT NULL,  -- code, document, diagram, config, data, image
+    language VARCHAR(50),  -- programming language if code
+    mime_type VARCHAR(100),
+    file_extension VARCHAR(20),
+    version INTEGER DEFAULT 1,
+    parent_id INTEGER REFERENCES artifacts(id),  -- for versioning
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    tags TEXT[] DEFAULT '{}',
+    metadata JSONB DEFAULT '{}',
+    created_by VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -160,6 +183,11 @@ CREATE INDEX IF NOT EXISTS idx_code_files_codebase ON code_files(codebase_id);
 CREATE INDEX IF NOT EXISTS idx_code_files_language ON code_files(language);
 CREATE INDEX IF NOT EXISTS idx_instructions_category ON instructions(category);
 CREATE INDEX IF NOT EXISTS idx_instructions_active ON instructions(is_active);
+CREATE INDEX IF NOT EXISTS idx_instructions_scope ON instructions(scope);
+CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(artifact_type);
+CREATE INDEX IF NOT EXISTS idx_artifacts_project ON artifacts(project_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_tags ON artifacts USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_artifacts_parent ON artifacts(parent_id);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
@@ -183,7 +211,7 @@ DO $$
 DECLARE
     t text;
 BEGIN
-    FOR t IN SELECT unnest(ARRAY['admins', 'memories', 'codebases', 'instructions', 'projects', 'conversations'])
+    FOR t IN SELECT unnest(ARRAY['admins', 'memories', 'codebases', 'instructions', 'artifacts', 'projects', 'conversations'])
     LOOP
         EXECUTE format('DROP TRIGGER IF EXISTS update_%s_updated_at ON %s', t, t);
         EXECUTE format('CREATE TRIGGER update_%s_updated_at BEFORE UPDATE ON %s FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()', t, t);

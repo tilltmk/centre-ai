@@ -30,11 +30,14 @@ class GitTools:
         return [
             {
                 'name': 'git_clone',
-                'description': 'Clone a Git repository',
+                'description': 'Clone a Git repository (supports authentication)',
                 'parameters': {
                     'repo_url': {'type': 'string', 'required': True, 'description': 'Git repository URL'},
                     'branch': {'type': 'string', 'required': False, 'description': 'Branch to clone', 'default': 'main'},
-                    'depth': {'type': 'integer', 'required': False, 'description': 'Clone depth (shallow clone)', 'default': None}
+                    'depth': {'type': 'integer', 'required': False, 'description': 'Clone depth (shallow clone)', 'default': None},
+                    'username': {'type': 'string', 'required': False, 'description': 'Git username for authentication'},
+                    'password': {'type': 'string', 'required': False, 'description': 'Git password or personal access token'},
+                    'ssh_key_path': {'type': 'string', 'required': False, 'description': 'Path to SSH private key'}
                 },
                 'handler': self.git_clone
             },
@@ -147,11 +150,45 @@ class GitTools:
             repo_name = repo_name[:-4]
         return repo_name
 
+    def _build_authenticated_url(self, repo_url: str, username: str = None, password: str = None) -> str:
+        """Build URL with embedded credentials for HTTPS authentication"""
+        if not username or not password:
+            return repo_url
+
+        # Parse the URL and inject credentials
+        if repo_url.startswith('https://'):
+            # https://github.com/user/repo.git -> https://username:password@github.com/user/repo.git
+            from urllib.parse import urlparse, urlunparse, quote
+            parsed = urlparse(repo_url)
+            # URL-encode username and password to handle special characters
+            encoded_user = quote(username, safe='')
+            encoded_pass = quote(password, safe='')
+            netloc = f"{encoded_user}:{encoded_pass}@{parsed.hostname}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            authenticated_url = urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
+            return authenticated_url
+        elif repo_url.startswith('http://'):
+            from urllib.parse import urlparse, urlunparse, quote
+            parsed = urlparse(repo_url)
+            encoded_user = quote(username, safe='')
+            encoded_pass = quote(password, safe='')
+            netloc = f"{encoded_user}:{encoded_pass}@{parsed.hostname}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            authenticated_url = urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
+            return authenticated_url
+
+        return repo_url
+
     def git_clone(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Clone a Git repository"""
+        """Clone a Git repository with optional authentication"""
         repo_url = params.get('repo_url')
         branch = params.get('branch', 'main')
         depth = params.get('depth')
+        username = params.get('username')
+        password = params.get('password')
+        ssh_key_path = params.get('ssh_key_path')
 
         try:
             # Extract repo name
@@ -165,13 +202,34 @@ class GitTools:
                     'error': f'Repository {repo_name} already exists. Use git_pull to update.'
                 }
 
-            # Clone repository
+            # Build clone kwargs
             clone_kwargs = {'branch': branch}
             if depth:
                 clone_kwargs['depth'] = depth
 
+            # Handle authentication
+            clone_url = repo_url
+            env = os.environ.copy()
+
+            if ssh_key_path and os.path.exists(ssh_key_path):
+                # SSH key authentication
+                env['GIT_SSH_COMMAND'] = f'ssh -i {ssh_key_path} -o StrictHostKeyChecking=no'
+                clone_kwargs['env'] = env
+                logger.info(f"Using SSH key authentication: {ssh_key_path}")
+            elif username and password:
+                # HTTPS authentication with credentials
+                clone_url = self._build_authenticated_url(repo_url, username, password)
+                logger.info(f"Using HTTPS authentication for user: {username}")
+
             logger.info(f"Cloning repository: {repo_url} to {repo_path}")
-            repo = Repo.clone_from(repo_url, repo_path, **clone_kwargs)
+
+            # Clone with authentication
+            if 'env' in clone_kwargs:
+                repo = Repo.clone_from(clone_url, repo_path, branch=branch,
+                                       depth=depth if depth else None,
+                                       env=clone_kwargs.get('env'))
+            else:
+                repo = Repo.clone_from(clone_url, repo_path, **clone_kwargs)
 
             return {
                 'success': True,
@@ -179,14 +237,18 @@ class GitTools:
                 'repo_path': repo_path,
                 'branch': repo.active_branch.name,
                 'commit': str(repo.head.commit.hexsha[:8]),
+                'authenticated': bool(username or ssh_key_path),
                 'message': f'Successfully cloned {repo_name}'
             }
 
         except GitCommandError as e:
             logger.error(f"Git clone error: {str(e)}")
+            error_msg = str(e)
+            if 'Authentication failed' in error_msg or 'could not read Username' in error_msg:
+                error_msg = 'Authentication failed. Please check your credentials or use a personal access token.'
             return {
                 'success': False,
-                'error': str(e)
+                'error': error_msg
             }
         except Exception as e:
             logger.error(f"Clone error: {str(e)}")
