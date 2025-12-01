@@ -181,6 +181,41 @@ class APIClient {
     async deleteProject(id) {
         return this.request(`/api/projects/${id}`, { method: 'DELETE' });
     }
+
+    // Knowledge Graph
+    async getGraph(params = {}) {
+        const query = new URLSearchParams();
+        if (params.node_type) query.set('node_type', params.node_type);
+        if (params.limit) query.set('limit', params.limit);
+        return this.request(`/api/knowledge/graph?${query}`);
+    }
+
+    async listKnowledgeNodes(params = {}) {
+        const query = new URLSearchParams();
+        if (params.node_type) query.set('node_type', params.node_type);
+        if (params.query) query.set('query', params.query);
+        return this.request(`/api/knowledge/nodes?${query}`);
+    }
+
+    async createKnowledgeNode(data) {
+        return this.request('/api/knowledge/nodes', { method: 'POST', body: JSON.stringify(data) });
+    }
+
+    async deleteKnowledgeNode(id) {
+        return this.request(`/api/knowledge/nodes/${id}`, { method: 'DELETE' });
+    }
+
+    async createConnection(data) {
+        return this.request('/api/knowledge/connect', { method: 'POST', body: JSON.stringify(data) });
+    }
+
+    async connectEntities(data) {
+        return this.request('/api/knowledge/connect-entities', { method: 'POST', body: JSON.stringify(data) });
+    }
+
+    async getNodeConnections(nodeId) {
+        return this.request(`/api/knowledge/nodes/${nodeId}/connections`);
+    }
 }
 
 // ============================================
@@ -232,6 +267,7 @@ function switchTab(tabName) {
         case 'artifacts': loadArtifacts(); break;
         case 'instructions': loadInstructions(); break;
         case 'projects': loadProjects(); break;
+        case 'knowledge': loadKnowledgeGraph(); break;
         case 'tools': loadTools(); break;
     }
 }
@@ -857,6 +893,490 @@ async function deleteProject(id) {
         if (result.success) {
             showToast('Projekt geloescht');
             loadProjects();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+// ============================================
+// Knowledge Graph
+// ============================================
+
+let graphData = { nodes: [], edges: [] };
+let graphCanvas = null;
+let graphCtx = null;
+let graphNodes = [];
+let selectedNode = null;
+let isDragging = false;
+let dragNode = null;
+let offsetX = 0;
+let offsetY = 0;
+
+const nodeColors = {
+    'concept': '#0a84ff',
+    'entity': '#30d158',
+    'topic': '#ff9f0a',
+    'reference': '#bf5af2',
+    'memory_ref': '#64d2ff',
+    'artifact_ref': '#ff6482',
+    'project_ref': '#ffd60a',
+    'instruction_ref': '#ac8e68',
+    'idea': '#5e5ce6',
+    'question': '#ff453a'
+};
+
+async function loadKnowledgeGraph() {
+    const container = document.getElementById('knowledge-nodes-list');
+    container.innerHTML = '<div class="loading-state">Graph wird geladen...</div>';
+
+    try {
+        const [graphResult, nodesResult] = await Promise.all([
+            api.getGraph({ limit: 100 }),
+            api.listKnowledgeNodes({})
+        ]);
+
+        if (graphResult.success) {
+            graphData = graphResult.graph || { nodes: [], edges: [] };
+            initGraphCanvas();
+            renderGraph();
+        }
+
+        if (nodesResult.success) {
+            renderNodesList(nodesResult.nodes || []);
+            populateNodeSelects(nodesResult.nodes || []);
+        }
+
+    } catch (error) {
+        container.innerHTML = `<div class="empty-state">Fehler: ${error.message}</div>`;
+    }
+}
+
+function initGraphCanvas() {
+    graphCanvas = document.getElementById('knowledge-graph-canvas');
+    if (!graphCanvas) return;
+
+    const wrapper = graphCanvas.parentElement;
+    graphCanvas.width = wrapper.clientWidth;
+    graphCanvas.height = 400;
+    graphCtx = graphCanvas.getContext('2d');
+
+    // Initialize node positions
+    graphNodes = graphData.nodes.map((node, i) => ({
+        ...node,
+        x: 100 + (i % 5) * 150 + Math.random() * 50,
+        y: 80 + Math.floor(i / 5) * 100 + Math.random() * 30,
+        vx: 0,
+        vy: 0,
+        radius: 25
+    }));
+
+    // Add mouse events
+    graphCanvas.addEventListener('mousedown', onGraphMouseDown);
+    graphCanvas.addEventListener('mousemove', onGraphMouseMove);
+    graphCanvas.addEventListener('mouseup', onGraphMouseUp);
+    graphCanvas.addEventListener('mouseleave', onGraphMouseUp);
+
+    // Apply force simulation
+    applyForceSimulation();
+}
+
+function applyForceSimulation() {
+    const iterations = 50;
+
+    for (let iter = 0; iter < iterations; iter++) {
+        // Repulsion between nodes
+        for (let i = 0; i < graphNodes.length; i++) {
+            for (let j = i + 1; j < graphNodes.length; j++) {
+                const dx = graphNodes[j].x - graphNodes[i].x;
+                const dy = graphNodes[j].y - graphNodes[i].y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                const force = 5000 / (dist * dist);
+
+                graphNodes[i].vx -= (dx / dist) * force;
+                graphNodes[i].vy -= (dy / dist) * force;
+                graphNodes[j].vx += (dx / dist) * force;
+                graphNodes[j].vy += (dy / dist) * force;
+            }
+        }
+
+        // Attraction along edges
+        for (const edge of graphData.edges) {
+            const source = graphNodes.find(n => n.id === edge.source_id);
+            const target = graphNodes.find(n => n.id === edge.target_id);
+            if (source && target) {
+                const dx = target.x - source.x;
+                const dy = target.y - source.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                const force = dist * 0.01;
+
+                source.vx += (dx / dist) * force;
+                source.vy += (dy / dist) * force;
+                target.vx -= (dx / dist) * force;
+                target.vy -= (dy / dist) * force;
+            }
+        }
+
+        // Apply velocities and damping
+        for (const node of graphNodes) {
+            node.x += node.vx * 0.1;
+            node.y += node.vy * 0.1;
+            node.vx *= 0.9;
+            node.vy *= 0.9;
+
+            // Keep within bounds
+            node.x = Math.max(40, Math.min(graphCanvas.width - 40, node.x));
+            node.y = Math.max(40, Math.min(graphCanvas.height - 40, node.y));
+        }
+    }
+}
+
+function renderGraph() {
+    if (!graphCtx) return;
+
+    graphCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+
+    // Draw edges
+    graphCtx.strokeStyle = getComputedStyle(document.documentElement)
+        .getPropertyValue('--border-color').trim() || '#e5e5e7';
+    graphCtx.lineWidth = 1.5;
+
+    for (const edge of graphData.edges) {
+        const source = graphNodes.find(n => n.id === edge.source_id);
+        const target = graphNodes.find(n => n.id === edge.target_id);
+        if (source && target) {
+            graphCtx.beginPath();
+            graphCtx.moveTo(source.x, source.y);
+            graphCtx.lineTo(target.x, target.y);
+            graphCtx.stroke();
+
+            // Draw relationship label
+            const midX = (source.x + target.x) / 2;
+            const midY = (source.y + target.y) / 2;
+            graphCtx.fillStyle = getComputedStyle(document.documentElement)
+                .getPropertyValue('--text-secondary').trim() || '#86868b';
+            graphCtx.font = '10px -apple-system, sans-serif';
+            graphCtx.textAlign = 'center';
+            graphCtx.fillText(edge.relationship || '', midX, midY - 5);
+        }
+    }
+
+    // Draw nodes
+    for (const node of graphNodes) {
+        const color = nodeColors[node.node_type] || '#0a84ff';
+
+        // Node circle
+        graphCtx.beginPath();
+        graphCtx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        graphCtx.fillStyle = color;
+        graphCtx.fill();
+
+        // Highlight if selected
+        if (selectedNode && selectedNode.id === node.id) {
+            graphCtx.strokeStyle = '#ffffff';
+            graphCtx.lineWidth = 3;
+            graphCtx.stroke();
+        }
+
+        // Node label
+        graphCtx.fillStyle = '#ffffff';
+        graphCtx.font = 'bold 11px -apple-system, sans-serif';
+        graphCtx.textAlign = 'center';
+        graphCtx.textBaseline = 'middle';
+        const label = (node.title || '').substring(0, 8);
+        graphCtx.fillText(label, node.x, node.y);
+    }
+}
+
+function onGraphMouseDown(e) {
+    const rect = graphCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    for (const node of graphNodes) {
+        const dx = x - node.x;
+        const dy = y - node.y;
+        if (dx * dx + dy * dy < node.radius * node.radius) {
+            isDragging = true;
+            dragNode = node;
+            offsetX = dx;
+            offsetY = dy;
+            selectedNode = node;
+            showNodeTooltip(node, e.clientX, e.clientY);
+            break;
+        }
+    }
+    renderGraph();
+}
+
+function onGraphMouseMove(e) {
+    const rect = graphCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (isDragging && dragNode) {
+        dragNode.x = x - offsetX;
+        dragNode.y = y - offsetY;
+        renderGraph();
+    } else {
+        // Check hover
+        let hovered = null;
+        for (const node of graphNodes) {
+            const dx = x - node.x;
+            const dy = y - node.y;
+            if (dx * dx + dy * dy < node.radius * node.radius) {
+                hovered = node;
+                break;
+            }
+        }
+        if (hovered) {
+            graphCanvas.style.cursor = 'pointer';
+            showNodeTooltip(hovered, e.clientX, e.clientY);
+        } else {
+            graphCanvas.style.cursor = 'default';
+            hideNodeTooltip();
+        }
+    }
+}
+
+function onGraphMouseUp() {
+    isDragging = false;
+    dragNode = null;
+}
+
+function showNodeTooltip(node, x, y) {
+    const tooltip = document.getElementById('graph-tooltip');
+    if (!tooltip) return;
+
+    tooltip.innerHTML = `
+        <strong>${escapeHtml(node.title)}</strong><br>
+        <span class="tooltip-type">${node.node_type}</span>
+        ${node.content ? `<p>${escapeHtml(node.content.substring(0, 100))}...</p>` : ''}
+    `;
+    tooltip.style.display = 'block';
+    tooltip.style.left = (x + 10) + 'px';
+    tooltip.style.top = (y + 10) + 'px';
+}
+
+function hideNodeTooltip() {
+    const tooltip = document.getElementById('graph-tooltip');
+    if (tooltip) tooltip.style.display = 'none';
+}
+
+function renderNodesList(nodes) {
+    const container = document.getElementById('knowledge-nodes-list');
+
+    if (nodes.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">&#128279;</div>
+                <p>Keine Nodes vorhanden</p>
+                <button class="btn btn-primary" onclick="showNodeModal()">Node erstellen</button>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = nodes.map(node => `
+        <div class="list-item">
+            <div class="list-item-header">
+                <div>
+                    <div class="list-item-title">${escapeHtml(node.title)}</div>
+                    <div class="list-item-meta">
+                        <span class="list-item-badge" style="background: ${nodeColors[node.node_type] || '#0a84ff'}; color: white;">
+                            ${node.node_type}
+                        </span>
+                        <span class="list-item-badge">ID: ${node.id}</span>
+                    </div>
+                </div>
+                <div class="list-item-actions">
+                    <button class="btn btn-secondary btn-small" onclick="showNodeConnections(${node.id})">Verbindungen</button>
+                    <button class="btn btn-danger btn-small" onclick="deleteNode(${node.id})">Delete</button>
+                </div>
+            </div>
+            ${node.content ? `<div class="list-item-content">${escapeHtml(node.content)}</div>` : ''}
+        </div>
+    `).join('');
+}
+
+function populateNodeSelects(nodes) {
+    const sourceSelect = document.getElementById('connection-source');
+    const targetSelect = document.getElementById('connection-target');
+
+    if (!sourceSelect || !targetSelect) return;
+
+    const options = '<option value="">-- Node auswaehlen --</option>' +
+        nodes.map(n => `<option value="${n.id}">${n.title} (${n.node_type})</option>`).join('');
+
+    sourceSelect.innerHTML = options;
+    targetSelect.innerHTML = options;
+}
+
+function filterGraph() {
+    const typeFilter = document.getElementById('graph-filter-type')?.value;
+    loadKnowledgeGraph();
+}
+
+function searchNodes() {
+    const query = document.getElementById('graph-search')?.value;
+    if (query && query.length > 1) {
+        api.listKnowledgeNodes({ query }).then(result => {
+            if (result.success) {
+                renderNodesList(result.nodes || []);
+            }
+        });
+    } else {
+        loadKnowledgeGraph();
+    }
+}
+
+// Node Modal
+function showNodeModal() {
+    document.getElementById('node-modal').style.display = 'flex';
+}
+
+function hideNodeModal() {
+    document.getElementById('node-modal').style.display = 'none';
+    document.getElementById('node-title').value = '';
+    document.getElementById('node-type').value = 'concept';
+    document.getElementById('node-content').value = '';
+}
+
+async function saveNode() {
+    const title = document.getElementById('node-title').value.trim();
+    const node_type = document.getElementById('node-type').value;
+    const content = document.getElementById('node-content').value.trim();
+
+    if (!title) {
+        showToast('Bitte Titel eingeben', 'error');
+        return;
+    }
+
+    try {
+        const data = { title, node_type };
+        if (content) data.content = content;
+
+        const result = await api.createKnowledgeNode(data);
+        if (result.success) {
+            showToast('Node erstellt');
+            hideNodeModal();
+            loadKnowledgeGraph();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function deleteNode(id) {
+    if (!confirm('Node wirklich loeschen? Alle Verbindungen werden auch geloescht.')) return;
+
+    try {
+        const result = await api.deleteKnowledgeNode(id);
+        if (result.success) {
+            showToast('Node geloescht');
+            loadKnowledgeGraph();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function showNodeConnections(nodeId) {
+    try {
+        const result = await api.getNodeConnections(nodeId);
+        if (result.success) {
+            const conns = result.connections || [];
+            const node = result.node;
+            let msg = `Verbindungen von "${node?.title}":\n\n`;
+            if (conns.length === 0) {
+                msg += 'Keine Verbindungen';
+            } else {
+                for (const c of conns) {
+                    msg += `- ${c.relationship} -> ${c.connected_node?.title || 'Unknown'}\n`;
+                }
+            }
+            alert(msg);
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+// Connection Modal
+function showConnectionModal() {
+    loadKnowledgeGraph(); // Ensure nodes are loaded for selects
+    document.getElementById('connection-modal').style.display = 'flex';
+}
+
+function hideConnectionModal() {
+    document.getElementById('connection-modal').style.display = 'none';
+    document.getElementById('connection-source').value = '';
+    document.getElementById('connection-target').value = '';
+    document.getElementById('connection-relationship').value = '';
+}
+
+async function saveConnection() {
+    const source_id = parseInt(document.getElementById('connection-source').value);
+    const target_id = parseInt(document.getElementById('connection-target').value);
+    const relationship = document.getElementById('connection-relationship').value.trim();
+    const bidirectional = document.getElementById('connection-bidirectional').checked;
+
+    if (!source_id || !target_id || !relationship) {
+        showToast('Bitte alle Felder ausfuellen', 'error');
+        return;
+    }
+
+    try {
+        const result = await api.createConnection({ source_id, target_id, relationship, bidirectional });
+        if (result.success) {
+            showToast('Verbindung erstellt');
+            hideConnectionModal();
+            loadKnowledgeGraph();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+// Entity Connection Modal
+function showEntityConnectionModal() {
+    document.getElementById('entity-connection-modal').style.display = 'flex';
+}
+
+function hideEntityConnectionModal() {
+    document.getElementById('entity-connection-modal').style.display = 'none';
+}
+
+async function connectEntities() {
+    const source_type = document.getElementById('entity-source-type').value;
+    const source_id = parseInt(document.getElementById('entity-source-id').value);
+    const target_type = document.getElementById('entity-target-type').value;
+    const target_id = parseInt(document.getElementById('entity-target-id').value);
+    const relationship = document.getElementById('entity-relationship').value.trim();
+
+    if (!source_id || !target_id || !relationship) {
+        showToast('Bitte alle Felder ausfuellen', 'error');
+        return;
+    }
+
+    try {
+        const result = await api.connectEntities({
+            source_type, source_id,
+            target_type, target_id,
+            relationship
+        });
+        if (result.success) {
+            showToast('Entitaeten verbunden');
+            hideEntityConnectionModal();
+            loadKnowledgeGraph();
         } else {
             showToast(result.error, 'error');
         }

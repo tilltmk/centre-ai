@@ -667,6 +667,112 @@ def delete_project(project_id):
 
 
 # ============================================================================
+# Knowledge Graph Routes
+# ============================================================================
+
+@app.route('/api/knowledge/nodes', methods=['GET'])
+@require_auth
+def list_knowledge_nodes():
+    """List knowledge nodes"""
+    try:
+        result = mcp_server.execute_tool('knowledge_search_nodes', {
+            'query': request.args.get('query'),
+            'node_type': request.args.get('node_type'),
+            'limit': request.args.get('limit', 50, type=int)
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/knowledge/nodes', methods=['POST'])
+@require_auth
+def create_knowledge_node():
+    """Create a knowledge node"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('knowledge_create_node', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/knowledge/nodes/<int:node_id>', methods=['DELETE'])
+@require_auth
+def delete_knowledge_node(node_id):
+    """Delete a knowledge node"""
+    try:
+        result = mcp_server.execute_tool('knowledge_delete_node', {'node_id': node_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/knowledge/connect', methods=['POST'])
+@require_auth
+def connect_knowledge_nodes():
+    """Connect two knowledge nodes"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('knowledge_connect', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/knowledge/connect-entities', methods=['POST'])
+@require_auth
+def connect_entities():
+    """Connect any two entities"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('knowledge_connect_entities', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/knowledge/connections/<int:node_id>', methods=['GET'])
+@require_auth
+def get_node_connections(node_id):
+    """Get connections for a node"""
+    try:
+        result = mcp_server.execute_tool('knowledge_get_connections', {
+            'node_id': node_id,
+            'direction': request.args.get('direction', 'both')
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/knowledge/edges/<int:edge_id>', methods=['DELETE'])
+@require_auth
+def delete_knowledge_edge(edge_id):
+    """Delete a knowledge edge"""
+    try:
+        result = mcp_server.execute_tool('knowledge_delete_connection', {'edge_id': edge_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/knowledge/graph', methods=['GET'])
+@require_auth
+def get_knowledge_graph():
+    """Get full knowledge graph for visualization"""
+    try:
+        result = mcp_server.execute_tool('knowledge_get_graph', {
+            'center_node_id': request.args.get('center_node_id', type=int),
+            'depth': request.args.get('depth', 2, type=int),
+            'include_entities': request.args.get('include_entities', 'true').lower() == 'true'
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
 # Health Check
 # ============================================================================
 

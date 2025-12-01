@@ -275,6 +275,92 @@ class AITools:
                 'description': 'List all indexed codebases',
                 'parameters': {},
                 'handler': self.codebase_list
+            },
+
+            # ========== KNOWLEDGE GRAPH TOOLS ==========
+            {
+                'name': 'knowledge_create_node',
+                'description': 'Create a knowledge node (concept, entity, topic)',
+                'parameters': {
+                    'title': {'type': 'string', 'required': True, 'description': 'Node title'},
+                    'node_type': {'type': 'string', 'required': True, 'description': 'Type: concept, entity, topic, person, technology, project, event'},
+                    'content': {'type': 'string', 'required': False, 'description': 'Detailed description'},
+                    'parent_id': {'type': 'integer', 'required': False, 'description': 'Parent node ID for hierarchy'},
+                    'metadata': {'type': 'object', 'required': False, 'description': 'Additional metadata'}
+                },
+                'handler': self.knowledge_create_node
+            },
+            {
+                'name': 'knowledge_connect',
+                'description': 'Connect two knowledge nodes with a relationship',
+                'parameters': {
+                    'source_id': {'type': 'integer', 'required': True, 'description': 'Source node ID'},
+                    'target_id': {'type': 'integer', 'required': True, 'description': 'Target node ID'},
+                    'relationship': {'type': 'string', 'required': True, 'description': 'Relationship type (e.g. relates_to, depends_on, part_of, uses, created_by)'},
+                    'weight': {'type': 'number', 'required': False, 'description': 'Connection strength 0-1', 'default': 1.0},
+                    'metadata': {'type': 'object', 'required': False, 'description': 'Additional context'}
+                },
+                'handler': self.knowledge_connect
+            },
+            {
+                'name': 'knowledge_connect_entities',
+                'description': 'Connect any two entities (memory, artifact, project, instruction) in the knowledge graph',
+                'parameters': {
+                    'source_type': {'type': 'string', 'required': True, 'description': 'Source type: memory, artifact, project, instruction, node'},
+                    'source_id': {'type': 'integer', 'required': True, 'description': 'Source entity ID'},
+                    'target_type': {'type': 'string', 'required': True, 'description': 'Target type: memory, artifact, project, instruction, node'},
+                    'target_id': {'type': 'integer', 'required': True, 'description': 'Target entity ID'},
+                    'relationship': {'type': 'string', 'required': True, 'description': 'Relationship description'},
+                    'weight': {'type': 'number', 'required': False, 'description': 'Connection strength', 'default': 1.0}
+                },
+                'handler': self.knowledge_connect_entities
+            },
+            {
+                'name': 'knowledge_get_connections',
+                'description': 'Get all connections for a node or entity',
+                'parameters': {
+                    'node_id': {'type': 'integer', 'required': False, 'description': 'Knowledge node ID'},
+                    'entity_type': {'type': 'string', 'required': False, 'description': 'Entity type if not a node'},
+                    'entity_id': {'type': 'integer', 'required': False, 'description': 'Entity ID if not a node'},
+                    'direction': {'type': 'string', 'required': False, 'description': 'both, outgoing, incoming', 'default': 'both'}
+                },
+                'handler': self.knowledge_get_connections
+            },
+            {
+                'name': 'knowledge_search_nodes',
+                'description': 'Search knowledge nodes',
+                'parameters': {
+                    'query': {'type': 'string', 'required': False, 'description': 'Search query'},
+                    'node_type': {'type': 'string', 'required': False, 'description': 'Filter by node type'},
+                    'limit': {'type': 'integer', 'required': False, 'description': 'Max results', 'default': 50}
+                },
+                'handler': self.knowledge_search_nodes
+            },
+            {
+                'name': 'knowledge_get_graph',
+                'description': 'Get the full knowledge graph or a subgraph',
+                'parameters': {
+                    'center_node_id': {'type': 'integer', 'required': False, 'description': 'Center node for subgraph'},
+                    'depth': {'type': 'integer', 'required': False, 'description': 'Traversal depth', 'default': 2},
+                    'include_entities': {'type': 'boolean', 'required': False, 'description': 'Include linked entities', 'default': True}
+                },
+                'handler': self.knowledge_get_graph
+            },
+            {
+                'name': 'knowledge_delete_node',
+                'description': 'Delete a knowledge node and its connections',
+                'parameters': {
+                    'node_id': {'type': 'integer', 'required': True, 'description': 'Node ID to delete'}
+                },
+                'handler': self.knowledge_delete_node
+            },
+            {
+                'name': 'knowledge_delete_connection',
+                'description': 'Delete a connection between nodes',
+                'parameters': {
+                    'edge_id': {'type': 'integer', 'required': True, 'description': 'Edge ID to delete'}
+                },
+                'handler': self.knowledge_delete_connection
             }
         ]
 
@@ -1281,6 +1367,457 @@ class AITools:
                 'success': True,
                 'codebases': codebases,
                 'count': len(codebases)
+            }
+
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    # ========== KNOWLEDGE GRAPH IMPLEMENTATIONS ==========
+
+    def knowledge_create_node(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a knowledge node"""
+        title = params.get('title')
+        node_type = params.get('node_type')
+        content = params.get('content')
+        parent_id = params.get('parent_id')
+        metadata = params.get('metadata', {})
+
+        valid_types = ['concept', 'entity', 'topic', 'person', 'technology', 'project', 'event', 'memory_ref', 'artifact_ref', 'project_ref', 'instruction_ref']
+        if node_type not in valid_types:
+            return {'success': False, 'error': f'Invalid node_type. Must be one of: {", ".join(valid_types)}'}
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+
+            cur.execute("""
+                INSERT INTO knowledge_nodes (title, node_type, content, parent_id, metadata)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, title, node_type
+            """, (title, node_type, content, parent_id, json.dumps(metadata)))
+
+            node = dict(cur.fetchone())
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            return {
+                'success': True,
+                'node_id': node['id'],
+                'title': node['title'],
+                'node_type': node['node_type'],
+                'message': f'Knowledge node "{title}" created'
+            }
+
+        except Exception as e:
+            logger.error(f"Error creating knowledge node: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
+    def knowledge_connect(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Connect two knowledge nodes"""
+        source_id = params.get('source_id')
+        target_id = params.get('target_id')
+        relationship = params.get('relationship')
+        weight = params.get('weight', 1.0)
+        metadata = params.get('metadata', {})
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Verify both nodes exist
+            cur.execute("SELECT id, title FROM knowledge_nodes WHERE id IN (%s, %s)", (source_id, target_id))
+            nodes = cur.fetchall()
+            if len(nodes) < 2:
+                cur.close()
+                conn.close()
+                return {'success': False, 'error': 'One or both nodes not found'}
+
+            # Create edge
+            cur.execute("""
+                INSERT INTO knowledge_edges (source_id, target_id, relationship, weight, metadata)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            """, (source_id, target_id, relationship, weight, json.dumps(metadata)))
+
+            edge = cur.fetchone()
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            return {
+                'success': True,
+                'edge_id': edge['id'],
+                'source_id': source_id,
+                'target_id': target_id,
+                'relationship': relationship,
+                'message': f'Connection "{relationship}" created'
+            }
+
+        except Exception as e:
+            logger.error(f"Error connecting nodes: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
+    def knowledge_connect_entities(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Connect any two entities through the knowledge graph"""
+        source_type = params.get('source_type')
+        source_id = params.get('source_id')
+        target_type = params.get('target_type')
+        target_id = params.get('target_id')
+        relationship = params.get('relationship')
+        weight = params.get('weight', 1.0)
+
+        valid_types = ['memory', 'artifact', 'project', 'instruction', 'node']
+
+        if source_type not in valid_types or target_type not in valid_types:
+            return {'success': False, 'error': f'Invalid entity type. Must be one of: {", ".join(valid_types)}'}
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Helper to get or create reference node for entity
+            def get_or_create_ref_node(entity_type, entity_id):
+                if entity_type == 'node':
+                    cur.execute("SELECT id, title FROM knowledge_nodes WHERE id = %s", (entity_id,))
+                    node = cur.fetchone()
+                    if node:
+                        return node['id'], node['title']
+                    return None, None
+
+                # Map entity types to tables and ref node types
+                table_map = {
+                    'memory': ('memories', 'content', 'memory_ref'),
+                    'artifact': ('artifacts', 'title', 'artifact_ref'),
+                    'project': ('projects', 'name', 'project_ref'),
+                    'instruction': ('instructions', 'title', 'instruction_ref')
+                }
+
+                table, title_col, ref_type = table_map[entity_type]
+
+                # Get entity title
+                cur.execute(f"SELECT id, {title_col} as title FROM {table} WHERE id = %s", (entity_id,))
+                entity = cur.fetchone()
+                if not entity:
+                    return None, None
+
+                entity_title = entity['title'][:100] if entity['title'] else f'{entity_type}_{entity_id}'
+
+                # Check if reference node already exists
+                cur.execute("""
+                    SELECT id, title FROM knowledge_nodes
+                    WHERE node_type = %s AND metadata->>'entity_id' = %s
+                """, (ref_type, str(entity_id)))
+                existing = cur.fetchone()
+
+                if existing:
+                    return existing['id'], existing['title']
+
+                # Create reference node
+                cur.execute("""
+                    INSERT INTO knowledge_nodes (title, node_type, content, metadata)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id, title
+                """, (entity_title, ref_type, f'Reference to {entity_type} #{entity_id}',
+                      json.dumps({'entity_type': entity_type, 'entity_id': entity_id})))
+
+                new_node = cur.fetchone()
+                return new_node['id'], new_node['title']
+
+            # Get or create nodes for both entities
+            source_node_id, source_title = get_or_create_ref_node(source_type, source_id)
+            if not source_node_id:
+                cur.close()
+                conn.close()
+                return {'success': False, 'error': f'Source {source_type} #{source_id} not found'}
+
+            target_node_id, target_title = get_or_create_ref_node(target_type, target_id)
+            if not target_node_id:
+                cur.close()
+                conn.close()
+                return {'success': False, 'error': f'Target {target_type} #{target_id} not found'}
+
+            # Create the edge
+            cur.execute("""
+                INSERT INTO knowledge_edges (source_id, target_id, relationship, weight, metadata)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            """, (source_node_id, target_node_id, relationship, weight,
+                  json.dumps({'source_entity': f'{source_type}:{source_id}', 'target_entity': f'{target_type}:{target_id}'})))
+
+            edge = cur.fetchone()
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            return {
+                'success': True,
+                'edge_id': edge['id'],
+                'source': {'type': source_type, 'id': source_id, 'node_id': source_node_id, 'title': source_title},
+                'target': {'type': target_type, 'id': target_id, 'node_id': target_node_id, 'title': target_title},
+                'relationship': relationship,
+                'message': f'Connected {source_type} "{source_title}" --[{relationship}]--> {target_type} "{target_title}"'
+            }
+
+        except Exception as e:
+            logger.error(f"Error connecting entities: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
+    def knowledge_get_connections(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Get connections for a node or entity"""
+        node_id = params.get('node_id')
+        entity_type = params.get('entity_type')
+        entity_id = params.get('entity_id')
+        direction = params.get('direction', 'both')
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+
+            # If entity specified, find its reference node
+            if entity_type and entity_id and not node_id:
+                ref_type = f'{entity_type}_ref'
+                cur.execute("""
+                    SELECT id FROM knowledge_nodes
+                    WHERE node_type = %s AND metadata->>'entity_id' = %s
+                """, (ref_type, str(entity_id)))
+                ref_node = cur.fetchone()
+                if ref_node:
+                    node_id = ref_node['id']
+                else:
+                    cur.close()
+                    conn.close()
+                    return {'success': True, 'connections': [], 'count': 0}
+
+            if not node_id:
+                cur.close()
+                conn.close()
+                return {'success': False, 'error': 'No node_id or entity specified'}
+
+            connections = []
+
+            # Outgoing connections
+            if direction in ['both', 'outgoing']:
+                cur.execute("""
+                    SELECT e.id as edge_id, e.relationship, e.weight, e.metadata as edge_metadata,
+                           n.id as target_id, n.title as target_title, n.node_type as target_type
+                    FROM knowledge_edges e
+                    JOIN knowledge_nodes n ON e.target_id = n.id
+                    WHERE e.source_id = %s
+                """, (node_id,))
+                for row in cur.fetchall():
+                    connections.append({
+                        'direction': 'outgoing',
+                        'edge_id': row['edge_id'],
+                        'relationship': row['relationship'],
+                        'weight': row['weight'],
+                        'node_id': row['target_id'],
+                        'node_title': row['target_title'],
+                        'node_type': row['target_type']
+                    })
+
+            # Incoming connections
+            if direction in ['both', 'incoming']:
+                cur.execute("""
+                    SELECT e.id as edge_id, e.relationship, e.weight, e.metadata as edge_metadata,
+                           n.id as source_id, n.title as source_title, n.node_type as source_type
+                    FROM knowledge_edges e
+                    JOIN knowledge_nodes n ON e.source_id = n.id
+                    WHERE e.target_id = %s
+                """, (node_id,))
+                for row in cur.fetchall():
+                    connections.append({
+                        'direction': 'incoming',
+                        'edge_id': row['edge_id'],
+                        'relationship': row['relationship'],
+                        'weight': row['weight'],
+                        'node_id': row['source_id'],
+                        'node_title': row['source_title'],
+                        'node_type': row['source_type']
+                    })
+
+            cur.close()
+            conn.close()
+
+            return {
+                'success': True,
+                'node_id': node_id,
+                'connections': connections,
+                'count': len(connections)
+            }
+
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def knowledge_search_nodes(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Search knowledge nodes"""
+        query = params.get('query')
+        node_type = params.get('node_type')
+        limit = params.get('limit', 50)
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+
+            conditions = []
+            values = []
+
+            if query:
+                conditions.append("(title ILIKE %s OR content ILIKE %s)")
+                values.extend([f'%{query}%', f'%{query}%'])
+
+            if node_type:
+                conditions.append("node_type = %s")
+                values.append(node_type)
+
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
+            values.append(limit)
+
+            cur.execute(f"""
+                SELECT id, title, node_type, content, parent_id, metadata, created_at
+                FROM knowledge_nodes
+                WHERE {where_clause}
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, values)
+
+            nodes = [dict(row) for row in cur.fetchall()]
+            cur.close()
+            conn.close()
+
+            for n in nodes:
+                if n['created_at']:
+                    n['created_at'] = n['created_at'].isoformat()
+
+            return {
+                'success': True,
+                'nodes': nodes,
+                'count': len(nodes)
+            }
+
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def knowledge_get_graph(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Get knowledge graph data for visualization"""
+        center_node_id = params.get('center_node_id')
+        depth = params.get('depth', 2)
+        include_entities = params.get('include_entities', True)
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+
+            if center_node_id:
+                # Get subgraph around center node
+                visited = set()
+                to_visit = [(center_node_id, 0)]
+                nodes = []
+                edges = []
+
+                while to_visit:
+                    current_id, current_depth = to_visit.pop(0)
+                    if current_id in visited or current_depth > depth:
+                        continue
+                    visited.add(current_id)
+
+                    # Get node
+                    cur.execute("SELECT * FROM knowledge_nodes WHERE id = %s", (current_id,))
+                    node = cur.fetchone()
+                    if node:
+                        nodes.append(dict(node))
+
+                        # Get edges
+                        cur.execute("""
+                            SELECT * FROM knowledge_edges
+                            WHERE source_id = %s OR target_id = %s
+                        """, (current_id, current_id))
+
+                        for edge in cur.fetchall():
+                            edge_dict = dict(edge)
+                            if edge_dict not in edges:
+                                edges.append(edge_dict)
+                            # Add connected nodes to visit
+                            next_id = edge['target_id'] if edge['source_id'] == current_id else edge['source_id']
+                            if next_id not in visited:
+                                to_visit.append((next_id, current_depth + 1))
+            else:
+                # Get full graph
+                cur.execute("SELECT * FROM knowledge_nodes ORDER BY created_at DESC LIMIT 200")
+                nodes = [dict(row) for row in cur.fetchall()]
+
+                cur.execute("SELECT * FROM knowledge_edges LIMIT 500")
+                edges = [dict(row) for row in cur.fetchall()]
+
+            cur.close()
+            conn.close()
+
+            # Format for visualization
+            for n in nodes:
+                if n.get('created_at'):
+                    n['created_at'] = n['created_at'].isoformat()
+            for e in edges:
+                if e.get('created_at'):
+                    e['created_at'] = e['created_at'].isoformat()
+
+            return {
+                'success': True,
+                'nodes': nodes,
+                'edges': edges,
+                'node_count': len(nodes),
+                'edge_count': len(edges)
+            }
+
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def knowledge_delete_node(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Delete a knowledge node"""
+        node_id = params.get('node_id')
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+
+            cur.execute("DELETE FROM knowledge_nodes WHERE id = %s", (node_id,))
+            deleted = cur.rowcount
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            if deleted == 0:
+                return {'success': False, 'error': f'Node {node_id} not found'}
+
+            return {
+                'success': True,
+                'message': f'Node {node_id} and its connections deleted'
+            }
+
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def knowledge_delete_connection(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Delete a knowledge edge"""
+        edge_id = params.get('edge_id')
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+
+            cur.execute("DELETE FROM knowledge_edges WHERE id = %s", (edge_id,))
+            deleted = cur.rowcount
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            if deleted == 0:
+                return {'success': False, 'error': f'Edge {edge_id} not found'}
+
+            return {
+                'success': True,
+                'message': f'Connection {edge_id} deleted'
             }
 
         except Exception as e:

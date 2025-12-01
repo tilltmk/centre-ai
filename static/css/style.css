@@ -994,3 +994,176 @@ body {
         width: 100%;
     }
 }
+
+/* ============================================
+   Knowledge Graph
+   ============================================ */
+
+.header-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.graph-container {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+[data-theme="dark"] .graph-container {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.graph-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.graph-controls .form-select,
+.graph-controls .form-input {
+    flex: 1;
+    min-width: 200px;
+}
+
+.graph-canvas-wrapper {
+    position: relative;
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    overflow: hidden;
+    min-height: 400px;
+}
+
+#knowledge-graph-canvas {
+    display: block;
+    width: 100%;
+    height: 400px;
+}
+
+.graph-tooltip {
+    position: fixed;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    z-index: 1500;
+    max-width: 250px;
+    font-size: 0.875rem;
+}
+
+[data-theme="dark"] .graph-tooltip {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: #1c1c1e;
+}
+
+.graph-tooltip strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--text-primary);
+}
+
+.graph-tooltip .tooltip-type {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    background: var(--accent-primary);
+    color: white;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.graph-tooltip p {
+    color: var(--text-secondary);
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.graph-legend {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.legend-dot.concept {
+    background: #0a84ff;
+}
+
+.legend-dot.entity {
+    background: #30d158;
+}
+
+.legend-dot.topic {
+    background: #ff9f0a;
+}
+
+.legend-dot.reference {
+    background: #bf5af2;
+}
+
+.knowledge-list-section {
+    margin-top: 2rem;
+}
+
+.knowledge-nodes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.modal-info {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+}
+
+/* Checkbox styling */
+.form-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-right: 0.5rem;
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+}
+
+.form-group label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+/* Graph animation */
+@keyframes nodeAppear {
+    from {
+        transform: scale(0);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
