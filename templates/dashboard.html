@@ -21,6 +21,10 @@
                 <button class="nav-tab" data-tab="artifacts">Artifacts</button>
                 <button class="nav-tab" data-tab="instructions">Instructions</button>
                 <button class="nav-tab" data-tab="projects">Projects</button>
+                <button class="nav-tab" data-tab="tasks">Tasks</button>
+                <button class="nav-tab" data-tab="notes">Notes</button>
+                <button class="nav-tab" data-tab="triggers">Triggers</button>
+                <button class="nav-tab" data-tab="conversations">Conversations</button>
                 <button class="nav-tab" data-tab="knowledge">Knowledge Graph</button>
                 <button class="nav-tab" data-tab="tools">Tools</button>
             </div>
@@ -446,6 +450,292 @@
                         <div class="modal-footer">
                             <button class="btn btn-secondary" onclick="hideProjectModal()">Abbrechen</button>
                             <button class="btn btn-primary" onclick="saveProject()">Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tasks Tab -->
+            <section id="tab-tasks" class="tab-content">
+                <div class="section-header">
+                    <h1 class="page-title">Tasks</h1>
+                    <button class="btn btn-primary" onclick="showTaskModal()">
+                        <span>+</span> Task erstellen
+                    </button>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="task-project-filter" class="form-select" onchange="loadTasks()">
+                        <option value="">Alle Projekte</option>
+                    </select>
+                    <select id="task-status-filter" class="form-select" onchange="loadTasks()">
+                        <option value="">Alle Status</option>
+                        <option value="pending">Offen</option>
+                        <option value="in_progress">In Arbeit</option>
+                        <option value="completed">Erledigt</option>
+                        <option value="cancelled">Abgebrochen</option>
+                    </select>
+                </div>
+
+                <div class="tasks-list" id="tasks-list">
+                    <div class="loading-state">Tasks werden geladen...</div>
+                </div>
+
+                <!-- Task Modal -->
+                <div id="task-modal" class="modal" style="display: none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 id="task-modal-title">Task erstellen</h2>
+                            <button class="modal-close" onclick="hideTaskModal()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="task-title">Titel</label>
+                                <input type="text" id="task-title" class="form-input" placeholder="Task-Titel">
+                            </div>
+                            <div class="form-group">
+                                <label for="task-description">Beschreibung</label>
+                                <textarea id="task-description" class="form-textarea" rows="3" placeholder="Task-Beschreibung..."></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="task-project">Projekt</label>
+                                    <select id="task-project" class="form-select">
+                                        <option value="">-- Projekt waehlen --</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="task-priority">Prioritaet (1-10)</label>
+                                    <input type="number" id="task-priority" class="form-input" value="5" min="1" max="10">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="task-due-date">Faelligkeitsdatum</label>
+                                    <input type="date" id="task-due-date" class="form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label for="task-assigned">Zugewiesen an</label>
+                                    <input type="text" id="task-assigned" class="form-input" placeholder="z.B. AI, User">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="hideTaskModal()">Abbrechen</button>
+                            <button class="btn btn-primary" onclick="saveTask()">Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Notes Tab -->
+            <section id="tab-notes" class="tab-content">
+                <div class="section-header">
+                    <h1 class="page-title">Notes</h1>
+                    <button class="btn btn-primary" onclick="showNoteModal()">
+                        <span>+</span> Note erstellen
+                    </button>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="note-type-filter" class="form-select" onchange="loadNotes()">
+                        <option value="">Alle Typen</option>
+                        <option value="general">Allgemein</option>
+                        <option value="idea">Idee</option>
+                        <option value="todo">Todo</option>
+                        <option value="question">Frage</option>
+                        <option value="reference">Referenz</option>
+                        <option value="meeting">Meeting</option>
+                        <option value="research">Research</option>
+                    </select>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="note-pinned-filter" onchange="loadNotes()">
+                        Nur gepinnte
+                    </label>
+                    <input type="text" id="note-search" class="form-input" placeholder="Suchen..." onkeyup="debounce(loadNotes, 300)">
+                </div>
+
+                <div class="notes-list" id="notes-list">
+                    <div class="loading-state">Notes werden geladen...</div>
+                </div>
+
+                <!-- Note Modal -->
+                <div id="note-modal" class="modal" style="display: none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 id="note-modal-title">Note erstellen</h2>
+                            <button class="modal-close" onclick="hideNoteModal()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="note-title">Titel (optional)</label>
+                                <input type="text" id="note-title" class="form-input" placeholder="Note-Titel">
+                            </div>
+                            <div class="form-group">
+                                <label for="note-content">Inhalt</label>
+                                <textarea id="note-content" class="form-textarea" rows="5" placeholder="Note-Inhalt..."></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="note-type">Typ</label>
+                                    <select id="note-type" class="form-select">
+                                        <option value="general">Allgemein</option>
+                                        <option value="idea">Idee</option>
+                                        <option value="todo">Todo</option>
+                                        <option value="question">Frage</option>
+                                        <option value="reference">Referenz</option>
+                                        <option value="meeting">Meeting</option>
+                                        <option value="research">Research</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="note-pinned">
+                                        <input type="checkbox" id="note-pinned">
+                                        Gepinnt
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="note-tags">Tags (kommagetrennt)</label>
+                                <input type="text" id="note-tags" class="form-input" placeholder="tag1, tag2, tag3">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="hideNoteModal()">Abbrechen</button>
+                            <button class="btn btn-primary" onclick="saveNote()">Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Triggers Tab -->
+            <section id="tab-triggers" class="tab-content">
+                <div class="section-header">
+                    <h1 class="page-title">Triggers</h1>
+                    <button class="btn btn-primary" onclick="showTriggerModal()">
+                        <span>+</span> Trigger erstellen
+                    </button>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="trigger-type-filter" class="form-select" onchange="loadTriggers()">
+                        <option value="">Alle Typen</option>
+                        <option value="scheduled">Geplant</option>
+                        <option value="event">Event</option>
+                        <option value="webhook">Webhook</option>
+                        <option value="condition">Bedingung</option>
+                        <option value="keyword">Keyword</option>
+                    </select>
+                    <select id="trigger-active-filter" class="form-select" onchange="loadTriggers()">
+                        <option value="">Alle</option>
+                        <option value="true">Aktiv</option>
+                        <option value="false">Inaktiv</option>
+                    </select>
+                </div>
+
+                <div class="triggers-list" id="triggers-list">
+                    <div class="loading-state">Triggers werden geladen...</div>
+                </div>
+
+                <!-- Trigger Modal -->
+                <div id="trigger-modal" class="modal" style="display: none;">
+                    <div class="modal-content modal-large">
+                        <div class="modal-header">
+                            <h2 id="trigger-modal-title">Trigger erstellen</h2>
+                            <button class="modal-close" onclick="hideTriggerModal()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="trigger-name">Name</label>
+                                <input type="text" id="trigger-name" class="form-input" placeholder="Trigger-Name">
+                            </div>
+                            <div class="form-group">
+                                <label for="trigger-description">Beschreibung</label>
+                                <textarea id="trigger-description" class="form-textarea" rows="2" placeholder="Trigger-Beschreibung..."></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="trigger-type">Trigger-Typ</label>
+                                    <select id="trigger-type" class="form-select">
+                                        <option value="event">Event</option>
+                                        <option value="keyword">Keyword</option>
+                                        <option value="condition">Bedingung</option>
+                                        <option value="scheduled">Geplant</option>
+                                        <option value="webhook">Webhook</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="trigger-event-source">Event-Quelle</label>
+                                    <select id="trigger-event-source" class="form-select">
+                                        <option value="conversation">Konversation</option>
+                                        <option value="memory">Memory</option>
+                                        <option value="project">Projekt</option>
+                                        <option value="task">Task</option>
+                                        <option value="artifact">Artifact</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="trigger-pattern">Event-Pattern (Regex oder Keyword)</label>
+                                <input type="text" id="trigger-pattern" class="form-input" placeholder="z.B. urgent|important">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="trigger-action-type">Aktion</label>
+                                    <select id="trigger-action-type" class="form-select">
+                                        <option value="execute_tool">Tool ausfuehren</option>
+                                        <option value="create_memory">Memory erstellen</option>
+                                        <option value="create_note">Note erstellen</option>
+                                        <option value="create_instruction">Instruction erstellen</option>
+                                        <option value="send_notification">Benachrichtigung</option>
+                                        <option value="webhook_call">Webhook aufrufen</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="trigger-action-config">Aktions-Konfiguration (JSON)</label>
+                                <textarea id="trigger-action-config" class="form-textarea code-editor" rows="4" placeholder='{"tool_name": "memory_create", "parameters": {...}}'></textarea>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="hideTriggerModal()">Abbrechen</button>
+                            <button class="btn btn-primary" onclick="saveTrigger()">Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Conversations Tab -->
+            <section id="tab-conversations" class="tab-content">
+                <div class="section-header">
+                    <h1 class="page-title">Conversations</h1>
+                </div>
+
+                <div class="filter-bar">
+                    <input type="text" id="conversation-search" class="form-input" placeholder="In Konversationen suchen..." onkeyup="debounce(loadConversations, 300)">
+                    <input type="date" id="conversation-from-date" class="form-input" onchange="loadConversations()">
+                    <input type="date" id="conversation-to-date" class="form-input" onchange="loadConversations()">
+                </div>
+
+                <div class="conversations-list" id="conversations-list">
+                    <div class="loading-state">Konversationen werden geladen...</div>
+                </div>
+
+                <!-- Conversation Detail Modal -->
+                <div id="conversation-modal" class="modal" style="display: none;">
+                    <div class="modal-content modal-large">
+                        <div class="modal-header">
+                            <h2 id="conversation-modal-title">Konversation</h2>
+                            <button class="modal-close" onclick="hideConversationModal()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="conversation-messages" id="conversation-messages">
+                                <div class="loading-state">Nachrichten werden geladen...</div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="hideConversationModal()">Schliessen</button>
+                            <button class="btn btn-primary" onclick="summarizeCurrentConversation()">Zusammenfassen</button>
                         </div>
                     </div>
                 </div>

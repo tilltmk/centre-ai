@@ -269,6 +269,10 @@ function switchTab(tabName) {
         case 'projects': loadProjects(); break;
         case 'knowledge': loadKnowledgeGraph(); break;
         case 'tools': loadTools(); break;
+        case 'tasks': loadTasks(); loadProjectsForSelect(); break;
+        case 'notes': loadNotes(); break;
+        case 'triggers': loadTriggers(); break;
+        case 'conversations': loadConversations(); break;
     }
 }
 
@@ -1450,6 +1454,536 @@ async function executeTool() {
         resultContent.textContent = JSON.stringify(result, null, 2);
     } catch (error) {
         resultContent.textContent = `Fehler: ${error.message}`;
+    }
+}
+
+// ============================================
+// Tasks
+// ============================================
+
+async function loadTasks() {
+    const container = document.getElementById('tasks-list');
+    container.innerHTML = '<div class="loading-state">Tasks werden geladen...</div>';
+
+    const projectFilter = document.getElementById('task-project-filter')?.value;
+    const statusFilter = document.getElementById('task-status-filter')?.value;
+
+    try {
+        const params = {};
+        if (projectFilter) params.project_id = projectFilter;
+        if (statusFilter) params.status = statusFilter;
+
+        const query = new URLSearchParams(params);
+        const data = await api.request(`/api/tasks?${query}`);
+        const tasks = data.tasks || [];
+
+        if (tasks.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">&#9744;</div>
+                    <p>Keine Tasks vorhanden</p>
+                    <button class="btn btn-primary" onclick="showTaskModal()">Task erstellen</button>
+                </div>
+            `;
+            return;
+        }
+
+        const statusColors = { pending: '', in_progress: 'warning', completed: 'success', cancelled: '' };
+
+        container.innerHTML = tasks.map(task => `
+            <div class="list-item">
+                <div class="list-item-header">
+                    <div>
+                        <div class="list-item-title">${escapeHtml(task.title)}</div>
+                        <div class="list-item-meta">
+                            <span class="list-item-badge ${statusColors[task.status] || ''}">${task.status}</span>
+                            <span class="list-item-badge">Prioritaet: ${task.priority}</span>
+                            ${task.project_name ? `<span class="list-item-badge primary">${task.project_name}</span>` : ''}
+                            ${task.due_date ? `<span class="list-item-badge">Faellig: ${new Date(task.due_date).toLocaleDateString()}</span>` : ''}
+                            ${task.assigned_to ? `<span class="list-item-badge">@${task.assigned_to}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="list-item-actions">
+                        ${task.status !== 'completed' ? `<button class="btn btn-success btn-small" onclick="completeTask(${task.id})">Erledigt</button>` : ''}
+                        <button class="btn btn-danger btn-small" onclick="deleteTask(${task.id})">Delete</button>
+                    </div>
+                </div>
+                ${task.description ? `<div class="list-item-content">${escapeHtml(task.description)}</div>` : ''}
+            </div>
+        `).join('');
+
+    } catch (error) {
+        container.innerHTML = `<div class="empty-state">Fehler: ${error.message}</div>`;
+    }
+}
+
+async function loadProjectsForSelect() {
+    try {
+        const data = await api.listProjects({});
+        const projects = data.projects || [];
+
+        const selects = ['task-project-filter', 'task-project'];
+        selects.forEach(id => {
+            const select = document.getElementById(id);
+            if (select) {
+                const firstOption = id.includes('filter') ? '<option value="">Alle Projekte</option>' : '<option value="">-- Projekt waehlen --</option>';
+                select.innerHTML = firstOption + projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            }
+        });
+    } catch (error) {
+        console.error('Failed to load projects for select:', error);
+    }
+}
+
+function showTaskModal() {
+    loadProjectsForSelect();
+    document.getElementById('task-modal').style.display = 'flex';
+}
+
+function hideTaskModal() {
+    document.getElementById('task-modal').style.display = 'none';
+    document.getElementById('task-title').value = '';
+    document.getElementById('task-description').value = '';
+    document.getElementById('task-project').value = '';
+    document.getElementById('task-priority').value = '5';
+    document.getElementById('task-due-date').value = '';
+    document.getElementById('task-assigned').value = '';
+}
+
+async function saveTask() {
+    const title = document.getElementById('task-title').value.trim();
+    const description = document.getElementById('task-description').value.trim();
+    const project_id = document.getElementById('task-project').value;
+    const priority = parseInt(document.getElementById('task-priority').value);
+    const due_date = document.getElementById('task-due-date').value;
+    const assigned_to = document.getElementById('task-assigned').value.trim();
+
+    if (!title || !project_id) {
+        showToast('Bitte Titel und Projekt eingeben', 'error');
+        return;
+    }
+
+    try {
+        const data = { title, project_id: parseInt(project_id), priority };
+        if (description) data.description = description;
+        if (due_date) data.due_date = due_date;
+        if (assigned_to) data.assigned_to = assigned_to;
+
+        const result = await api.request('/api/tasks', { method: 'POST', body: JSON.stringify(data) });
+        if (result.success) {
+            showToast('Task erstellt');
+            hideTaskModal();
+            loadTasks();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function completeTask(id) {
+    try {
+        const result = await api.request(`/api/tasks/${id}/complete`, { method: 'POST', body: '{}' });
+        if (result.success) {
+            showToast('Task erledigt');
+            loadTasks();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function deleteTask(id) {
+    if (!confirm('Task wirklich loeschen?')) return;
+
+    try {
+        const result = await api.request(`/api/tasks/${id}`, { method: 'DELETE' });
+        if (result.success) {
+            showToast('Task geloescht');
+            loadTasks();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+// ============================================
+// Notes
+// ============================================
+
+async function loadNotes() {
+    const container = document.getElementById('notes-list');
+    container.innerHTML = '<div class="loading-state">Notes werden geladen...</div>';
+
+    const typeFilter = document.getElementById('note-type-filter')?.value;
+    const pinnedOnly = document.getElementById('note-pinned-filter')?.checked;
+    const searchQuery = document.getElementById('note-search')?.value;
+
+    try {
+        const params = {};
+        if (typeFilter) params.note_type = typeFilter;
+        if (pinnedOnly) params.pinned_only = 'true';
+        if (searchQuery) params.query = searchQuery;
+
+        const query = new URLSearchParams(params);
+        const data = await api.request(`/api/notes?${query}`);
+        const notes = data.notes || [];
+
+        if (notes.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">&#128221;</div>
+                    <p>Keine Notes vorhanden</p>
+                    <button class="btn btn-primary" onclick="showNoteModal()">Note erstellen</button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = notes.map(note => `
+            <div class="list-item ${note.is_pinned ? 'pinned' : ''}">
+                <div class="list-item-header">
+                    <div>
+                        <div class="list-item-title">${note.is_pinned ? '&#128204; ' : ''}${escapeHtml(note.title || 'Untitled')}</div>
+                        <div class="list-item-meta">
+                            <span class="list-item-badge primary">${note.note_type}</span>
+                            ${(note.tags || []).map(t => `<span class="list-item-badge">${t}</span>`).join('')}
+                        </div>
+                    </div>
+                    <div class="list-item-actions">
+                        <button class="btn btn-danger btn-small" onclick="deleteNote(${note.id})">Delete</button>
+                    </div>
+                </div>
+                <div class="list-item-content">${escapeHtml(note.content)}</div>
+            </div>
+        `).join('');
+
+    } catch (error) {
+        container.innerHTML = `<div class="empty-state">Fehler: ${error.message}</div>`;
+    }
+}
+
+function showNoteModal() {
+    document.getElementById('note-modal').style.display = 'flex';
+}
+
+function hideNoteModal() {
+    document.getElementById('note-modal').style.display = 'none';
+    document.getElementById('note-title').value = '';
+    document.getElementById('note-content').value = '';
+    document.getElementById('note-type').value = 'general';
+    document.getElementById('note-pinned').checked = false;
+    document.getElementById('note-tags').value = '';
+}
+
+async function saveNote() {
+    const content = document.getElementById('note-content').value.trim();
+    const title = document.getElementById('note-title').value.trim();
+    const note_type = document.getElementById('note-type').value;
+    const is_pinned = document.getElementById('note-pinned').checked;
+    const tagsStr = document.getElementById('note-tags').value;
+    const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    if (!content) {
+        showToast('Bitte Inhalt eingeben', 'error');
+        return;
+    }
+
+    try {
+        const data = { content, note_type, is_pinned, tags };
+        if (title) data.title = title;
+
+        const result = await api.request('/api/notes', { method: 'POST', body: JSON.stringify(data) });
+        if (result.success) {
+            showToast('Note erstellt');
+            hideNoteModal();
+            loadNotes();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function deleteNote(id) {
+    if (!confirm('Note wirklich loeschen?')) return;
+
+    try {
+        const result = await api.request(`/api/notes/${id}`, { method: 'DELETE' });
+        if (result.success) {
+            showToast('Note geloescht');
+            loadNotes();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+// ============================================
+// Triggers
+// ============================================
+
+async function loadTriggers() {
+    const container = document.getElementById('triggers-list');
+    container.innerHTML = '<div class="loading-state">Triggers werden geladen...</div>';
+
+    const typeFilter = document.getElementById('trigger-type-filter')?.value;
+    const activeFilter = document.getElementById('trigger-active-filter')?.value;
+
+    try {
+        const params = {};
+        if (typeFilter) params.trigger_type = typeFilter;
+        if (activeFilter) params.is_active = activeFilter;
+
+        const query = new URLSearchParams(params);
+        const data = await api.request(`/api/triggers?${query}`);
+        const triggers = data.triggers || [];
+
+        if (triggers.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">&#9889;</div>
+                    <p>Keine Triggers vorhanden</p>
+                    <button class="btn btn-primary" onclick="showTriggerModal()">Trigger erstellen</button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = triggers.map(trigger => `
+            <div class="list-item">
+                <div class="list-item-header">
+                    <div>
+                        <div class="list-item-title">${escapeHtml(trigger.name)}</div>
+                        <div class="list-item-meta">
+                            <span class="list-item-badge primary">${trigger.trigger_type}</span>
+                            <span class="list-item-badge">${trigger.action_type}</span>
+                            ${trigger.is_active ? '<span class="list-item-badge success">Aktiv</span>' : '<span class="list-item-badge">Inaktiv</span>'}
+                            ${trigger.event_source ? `<span class="list-item-badge">Quelle: ${trigger.event_source}</span>` : ''}
+                            <span class="list-item-badge">Ausfuehrungen: ${trigger.trigger_count || 0}</span>
+                        </div>
+                    </div>
+                    <div class="list-item-actions">
+                        <button class="btn btn-secondary btn-small" onclick="executeTriggerManually(${trigger.id})">Testen</button>
+                        <button class="btn btn-danger btn-small" onclick="deleteTrigger(${trigger.id})">Delete</button>
+                    </div>
+                </div>
+                ${trigger.description ? `<div class="list-item-content">${escapeHtml(trigger.description)}</div>` : ''}
+            </div>
+        `).join('');
+
+    } catch (error) {
+        container.innerHTML = `<div class="empty-state">Fehler: ${error.message}</div>`;
+    }
+}
+
+function showTriggerModal() {
+    document.getElementById('trigger-modal').style.display = 'flex';
+}
+
+function hideTriggerModal() {
+    document.getElementById('trigger-modal').style.display = 'none';
+    document.getElementById('trigger-name').value = '';
+    document.getElementById('trigger-description').value = '';
+    document.getElementById('trigger-type').value = 'event';
+    document.getElementById('trigger-event-source').value = 'conversation';
+    document.getElementById('trigger-pattern').value = '';
+    document.getElementById('trigger-action-type').value = 'execute_tool';
+    document.getElementById('trigger-action-config').value = '';
+}
+
+async function saveTrigger() {
+    const name = document.getElementById('trigger-name').value.trim();
+    const description = document.getElementById('trigger-description').value.trim();
+    const trigger_type = document.getElementById('trigger-type').value;
+    const event_source = document.getElementById('trigger-event-source').value;
+    const event_pattern = document.getElementById('trigger-pattern').value.trim();
+    const action_type = document.getElementById('trigger-action-type').value;
+    const action_config_str = document.getElementById('trigger-action-config').value.trim();
+
+    if (!name || !action_config_str) {
+        showToast('Bitte Name und Aktions-Konfiguration eingeben', 'error');
+        return;
+    }
+
+    let action_config;
+    try {
+        action_config = JSON.parse(action_config_str);
+    } catch (e) {
+        showToast('Aktions-Konfiguration ist kein gueltiges JSON', 'error');
+        return;
+    }
+
+    try {
+        const data = { name, trigger_type, action_type, action_config };
+        if (description) data.description = description;
+        if (event_source) data.event_source = event_source;
+        if (event_pattern) data.event_pattern = event_pattern;
+
+        const result = await api.request('/api/triggers', { method: 'POST', body: JSON.stringify(data) });
+        if (result.success) {
+            showToast('Trigger erstellt');
+            hideTriggerModal();
+            loadTriggers();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function executeTriggerManually(id) {
+    try {
+        const result = await api.request(`/api/triggers/${id}/execute`, { method: 'POST', body: '{}' });
+        if (result.success) {
+            showToast('Trigger ausgefuehrt');
+            loadTriggers();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function deleteTrigger(id) {
+    if (!confirm('Trigger wirklich loeschen?')) return;
+
+    try {
+        const result = await api.request(`/api/triggers/${id}`, { method: 'DELETE' });
+        if (result.success) {
+            showToast('Trigger geloescht');
+            loadTriggers();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+// ============================================
+// Conversations
+// ============================================
+
+let currentConversationSession = null;
+
+async function loadConversations() {
+    const container = document.getElementById('conversations-list');
+    container.innerHTML = '<div class="loading-state">Konversationen werden geladen...</div>';
+
+    const searchQuery = document.getElementById('conversation-search')?.value;
+    const fromDate = document.getElementById('conversation-from-date')?.value;
+    const toDate = document.getElementById('conversation-to-date')?.value;
+
+    try {
+        const params = {};
+        if (searchQuery) params.query = searchQuery;
+        if (fromDate) params.from_date = fromDate;
+        if (toDate) params.to_date = toDate;
+
+        const query = new URLSearchParams(params);
+        const data = await api.request(`/api/conversations/search?${query}`);
+        const conversations = data.conversations || [];
+
+        if (conversations.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">&#128172;</div>
+                    <p>Keine Konversationen gefunden</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = conversations.map(conv => `
+            <div class="list-item" onclick="showConversationDetail('${conv.session_id}')">
+                <div class="list-item-header">
+                    <div>
+                        <div class="list-item-title">${escapeHtml(conv.title || 'Conversation')}</div>
+                        <div class="list-item-meta">
+                            <span class="list-item-badge primary">${conv.message_count || 0} Nachrichten</span>
+                            ${conv.client_name ? `<span class="list-item-badge">${conv.client_name}</span>` : ''}
+                            ${conv.topics ? conv.topics.slice(0, 3).map(t => `<span class="list-item-badge">${t}</span>`).join('') : ''}
+                            <span class="list-item-badge">${new Date(conv.created_at).toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+                ${conv.summary ? `<div class="list-item-content">${escapeHtml(conv.summary.substring(0, 200))}...</div>` : ''}
+            </div>
+        `).join('');
+
+    } catch (error) {
+        container.innerHTML = `<div class="empty-state">Fehler: ${error.message}</div>`;
+    }
+}
+
+async function showConversationDetail(sessionId) {
+    currentConversationSession = sessionId;
+    document.getElementById('conversation-modal').style.display = 'flex';
+    document.getElementById('conversation-modal-title').textContent = `Konversation: ${sessionId.substring(0, 16)}...`;
+
+    const messagesContainer = document.getElementById('conversation-messages');
+    messagesContainer.innerHTML = '<div class="loading-state">Nachrichten werden geladen...</div>';
+
+    try {
+        const data = await api.request(`/api/conversations/${sessionId}/history`);
+        const conv = data.conversation || {};
+        const messages = conv.messages || [];
+
+        if (messages.length === 0) {
+            messagesContainer.innerHTML = '<div class="empty-state">Keine Nachrichten</div>';
+            return;
+        }
+
+        messagesContainer.innerHTML = messages.map(msg => `
+            <div class="conversation-message ${msg.role}">
+                <div class="message-role">${msg.role === 'user' ? 'User' : 'Assistant'}</div>
+                <div class="message-content">${escapeHtml(msg.content)}</div>
+                <div class="message-time">${new Date(msg.created_at).toLocaleString()}</div>
+            </div>
+        `).join('');
+
+    } catch (error) {
+        messagesContainer.innerHTML = `<div class="empty-state">Fehler: ${error.message}</div>`;
+    }
+}
+
+function hideConversationModal() {
+    document.getElementById('conversation-modal').style.display = 'none';
+    currentConversationSession = null;
+}
+
+async function summarizeCurrentConversation() {
+    if (!currentConversationSession) return;
+
+    const summaryText = prompt('Zusammenfassung eingeben:');
+    if (!summaryText) return;
+
+    try {
+        const result = await api.request(`/api/conversations/${currentConversationSession}/summarize`, {
+            method: 'POST',
+            body: JSON.stringify({ summary_text: summaryText })
+        });
+
+        if (result.success) {
+            showToast('Zusammenfassung gespeichert');
+            hideConversationModal();
+            loadConversations();
+        } else {
+            showToast(result.error, 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
     }
 }
 

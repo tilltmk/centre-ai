@@ -773,6 +773,521 @@ def get_knowledge_graph():
 
 
 # ============================================================================
+# Task Routes
+# ============================================================================
+
+@app.route('/api/tasks', methods=['GET'])
+@require_auth
+def list_tasks():
+    """List tasks"""
+    try:
+        result = mcp_server.execute_tool('task_list', {
+            'project_id': request.args.get('project_id', type=int),
+            'status': request.args.get('status'),
+            'assigned_to': request.args.get('assigned_to'),
+            'due_before': request.args.get('due_before'),
+            'limit': request.args.get('limit', 100, type=int)
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tasks', methods=['POST'])
+@require_auth
+def create_task():
+    """Create a task"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('task_create', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tasks/<int:task_id>', methods=['GET'])
+@require_auth
+def get_task(task_id):
+    """Get task details"""
+    try:
+        result = mcp_server.execute_tool('task_get', {'task_id': task_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tasks/<int:task_id>', methods=['PUT'])
+@require_auth
+def update_task(task_id):
+    """Update a task"""
+    try:
+        data = request.get_json()
+        data['task_id'] = task_id
+        result = mcp_server.execute_tool('task_update', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tasks/<int:task_id>', methods=['DELETE'])
+@require_auth
+def delete_task(task_id):
+    """Delete a task"""
+    try:
+        result = mcp_server.execute_tool('task_delete', {'task_id': task_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tasks/<int:task_id>/complete', methods=['POST'])
+@require_auth
+def complete_task(task_id):
+    """Mark task as completed"""
+    try:
+        data = request.get_json() or {}
+        result = mcp_server.execute_tool('task_complete', {
+            'task_id': task_id,
+            'completion_notes': data.get('completion_notes')
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Milestone Routes
+# ============================================================================
+
+@app.route('/api/milestones', methods=['GET'])
+@require_auth
+def list_milestones():
+    """List milestones"""
+    try:
+        result = mcp_server.execute_tool('milestone_list', {
+            'project_id': request.args.get('project_id', type=int),
+            'status': request.args.get('status')
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/milestones', methods=['POST'])
+@require_auth
+def create_milestone():
+    """Create a milestone"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('milestone_create', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/milestones/<int:milestone_id>', methods=['PUT'])
+@require_auth
+def update_milestone(milestone_id):
+    """Update a milestone"""
+    try:
+        data = request.get_json()
+        data['milestone_id'] = milestone_id
+        result = mcp_server.execute_tool('milestone_update', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/milestones/<int:milestone_id>', methods=['DELETE'])
+@require_auth
+def delete_milestone(milestone_id):
+    """Delete a milestone"""
+    try:
+        result = mcp_server.execute_tool('milestone_delete', {'milestone_id': milestone_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Note Routes
+# ============================================================================
+
+@app.route('/api/notes', methods=['GET'])
+@require_auth
+def search_notes():
+    """Search notes"""
+    try:
+        result = mcp_server.execute_tool('note_search', {
+            'query': request.args.get('query'),
+            'note_type': request.args.get('note_type'),
+            'project_id': request.args.get('project_id', type=int),
+            'pinned_only': request.args.get('pinned_only', 'false').lower() == 'true',
+            'limit': request.args.get('limit', 50, type=int)
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/notes', methods=['POST'])
+@require_auth
+def create_note():
+    """Create a note"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('note_create', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/notes/<int:note_id>', methods=['PUT'])
+@require_auth
+def update_note(note_id):
+    """Update a note"""
+    try:
+        data = request.get_json()
+        data['note_id'] = note_id
+        result = mcp_server.execute_tool('note_update', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/notes/<int:note_id>', methods=['DELETE'])
+@require_auth
+def delete_note(note_id):
+    """Delete a note"""
+    try:
+        result = mcp_server.execute_tool('note_delete', {'note_id': note_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Summary Routes
+# ============================================================================
+
+@app.route('/api/summaries', methods=['GET'])
+@require_auth
+def search_summaries():
+    """Search summaries"""
+    try:
+        result = mcp_server.execute_tool('summary_search', {
+            'query': request.args.get('query'),
+            'source_type': request.args.get('source_type'),
+            'limit': request.args.get('limit', 20, type=int)
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/summaries', methods=['POST'])
+@require_auth
+def create_summary():
+    """Create a summary"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('summary_create', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/summaries/<source_type>/<int:source_id>', methods=['GET'])
+@require_auth
+def get_summaries(source_type, source_id):
+    """Get summaries for a source"""
+    try:
+        result = mcp_server.execute_tool('summary_get', {
+            'source_type': source_type,
+            'source_id': source_id
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Trigger Routes
+# ============================================================================
+
+@app.route('/api/triggers', methods=['GET'])
+@require_auth
+def list_triggers():
+    """List triggers"""
+    try:
+        result = mcp_server.execute_tool('trigger_list', {
+            'trigger_type': request.args.get('trigger_type'),
+            'is_active': request.args.get('is_active', type=lambda x: x.lower() == 'true') if request.args.get('is_active') else None,
+            'event_source': request.args.get('event_source')
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/triggers', methods=['POST'])
+@require_auth
+def create_trigger():
+    """Create a trigger"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('trigger_create', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/triggers/<int:trigger_id>', methods=['PUT'])
+@require_auth
+def update_trigger(trigger_id):
+    """Update a trigger"""
+    try:
+        data = request.get_json()
+        data['trigger_id'] = trigger_id
+        result = mcp_server.execute_tool('trigger_update', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/triggers/<int:trigger_id>', methods=['DELETE'])
+@require_auth
+def delete_trigger(trigger_id):
+    """Delete a trigger"""
+    try:
+        result = mcp_server.execute_tool('trigger_delete', {'trigger_id': trigger_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/triggers/<int:trigger_id>/execute', methods=['POST'])
+@require_auth
+def execute_trigger(trigger_id):
+    """Execute a trigger manually"""
+    try:
+        data = request.get_json() or {}
+        result = mcp_server.execute_tool('trigger_execute', {
+            'trigger_id': trigger_id,
+            'test_data': data.get('test_data', {})
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/triggers/<int:trigger_id>/logs', methods=['GET'])
+@require_auth
+def get_trigger_logs(trigger_id):
+    """Get trigger execution logs"""
+    try:
+        result = mcp_server.execute_tool('trigger_get_logs', {
+            'trigger_id': trigger_id,
+            'limit': request.args.get('limit', 50, type=int)
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Conversation Logging Routes
+# ============================================================================
+
+@app.route('/api/conversations/log', methods=['POST'])
+@require_auth
+def log_conversation():
+    """Log a conversation exchange"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('conversation_log', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/conversations/search', methods=['GET'])
+@require_auth
+def search_conversations():
+    """Search conversations"""
+    try:
+        result = mcp_server.execute_tool('conversation_get_history', {
+            'query': request.args.get('query'),
+            'user_id': request.args.get('user_id'),
+            'from_date': request.args.get('from_date'),
+            'to_date': request.args.get('to_date'),
+            'limit': request.args.get('limit', 50, type=int)
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/conversations/<session_id>/summarize', methods=['POST'])
+@require_auth
+def summarize_conversation(session_id):
+    """Summarize a conversation"""
+    try:
+        data = request.get_json()
+        data['session_id'] = session_id
+        result = mcp_server.execute_tool('conversation_summarize', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Context Routes
+# ============================================================================
+
+@app.route('/api/context/relevant', methods=['GET'])
+@require_auth
+def get_relevant_context():
+    """Get relevant context for a topic"""
+    try:
+        result = mcp_server.execute_tool('context_get_relevant', {
+            'topic': request.args.get('topic'),
+            'include_memories': request.args.get('include_memories', 'true').lower() == 'true',
+            'include_notes': request.args.get('include_notes', 'true').lower() == 'true',
+            'include_instructions': request.args.get('include_instructions', 'true').lower() == 'true',
+            'include_conversations': request.args.get('include_conversations', 'true').lower() == 'true',
+            'limit_per_type': request.args.get('limit_per_type', 10, type=int)
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/context/session', methods=['POST'])
+@require_auth
+def save_session_context():
+    """Save session context"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('context_save_session', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/context/session/<session_name>', methods=['GET'])
+@require_auth
+def restore_session_context(session_name):
+    """Restore session context"""
+    try:
+        result = mcp_server.execute_tool('context_restore_session', {
+            'session_name': session_name
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Project Extension Routes
+# ============================================================================
+
+@app.route('/api/projects/from-description', methods=['POST'])
+@require_auth
+def create_project_from_description():
+    """Create project from description"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('project_create_from_description', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/projects/<int:project_id>/overview', methods=['GET'])
+@require_auth
+def get_project_overview(project_id):
+    """Get complete project overview"""
+    try:
+        result = mcp_server.execute_tool('project_get_overview', {'project_id': project_id}, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/projects/from-instruction/<int:instruction_id>', methods=['POST'])
+@require_auth
+def create_project_from_instruction(instruction_id):
+    """Create project from instruction"""
+    try:
+        data = request.get_json() or {}
+        result = mcp_server.execute_tool('project_add_from_instruction', {
+            'instruction_id': instruction_id,
+            'name': data.get('name')
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Instruction Extraction Routes
+# ============================================================================
+
+@app.route('/api/instructions/extract', methods=['POST'])
+@require_auth
+def extract_instructions():
+    """Extract instructions from text"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('instruction_extract_from_text', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/instructions/suggest/<session_id>', methods=['GET'])
+@require_auth
+def suggest_instructions(session_id):
+    """Suggest instructions from conversation"""
+    try:
+        result = mcp_server.execute_tool('instruction_suggest_from_conversation', {
+            'session_id': session_id
+        }, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# Batch Operations Routes
+# ============================================================================
+
+@app.route('/api/batch/tasks', methods=['POST'])
+@require_auth
+def batch_create_tasks():
+    """Create multiple tasks"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('batch_create_tasks', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/batch/notes', methods=['POST'])
+@require_auth
+def batch_create_notes():
+    """Create multiple notes"""
+    try:
+        data = request.get_json()
+        result = mcp_server.execute_tool('batch_create_notes', data, user=request.user)
+        return jsonify(result.get('result', result)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
 # Health Check
 # ============================================================================
 
