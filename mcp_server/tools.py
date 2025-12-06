@@ -692,6 +692,406 @@ class MCPTools:
             "conversations": conversations
         }
 
+    @staticmethod
+    async def conversation_log(
+        user_message: str,
+        assistant_response: str,
+        session_id: Optional[str] = None,
+        title: Optional[str] = None,
+        tool_calls: Optional[List[str]] = None,
+        client_name: str = "unknown"
+    ) -> Dict[str, Any]:
+        """
+        Log a conversation or message exchange.
+
+        Args:
+            user_message: The user message
+            assistant_response: The assistant response
+            session_id: Session ID (auto-generated if not provided)
+            title: Conversation title
+            tool_calls: List of tools called during response
+            client_name: Client application name
+
+        Returns:
+            Created conversation info with IDs
+        """
+        import uuid
+
+        session_id = session_id or f"session_{uuid.uuid4().hex[:16]}"
+        tool_calls = tool_calls or []
+
+        async with db.acquire() as conn:
+            # Get or create conversation
+            row = await conn.fetchrow(
+                "SELECT id, message_count FROM conversations WHERE session_id = $1",
+                session_id
+            )
+
+            if not row:
+                row = await conn.fetchrow("""
+                    INSERT INTO conversations (session_id, title, client_name, is_auto_logged, message_count)
+                    VALUES ($1, $2, $3, true, 0)
+                    RETURNING id, message_count
+                """, session_id, title or f"Conversation {session_id[:8]}", client_name)
+
+            conv_id = row["id"]
+
+            # Add user message
+            await conn.execute("""
+                INSERT INTO messages (conversation_id, role, content)
+                VALUES ($1, 'user', $2)
+            """, conv_id, user_message)
+
+            # Add assistant message
+            await conn.execute("""
+                INSERT INTO messages (conversation_id, role, content, tool_calls)
+                VALUES ($1, 'assistant', $2, $3)
+            """, conv_id, assistant_response, json.dumps(tool_calls) if tool_calls else None)
+
+            # Update conversation message count
+            await conn.execute("""
+                UPDATE conversations SET message_count = message_count + 2, updated_at = CURRENT_TIMESTAMP WHERE id = $1
+            """, conv_id)
+
+        return {
+            "success": True,
+            "session_id": session_id,
+            "conversation_id": conv_id,
+            "messages_added": 2,
+            "message": "Conversation logged successfully"
+        }
+
+    # ==================== NOTE TOOLS ====================
+
+    @staticmethod
+    async def note_create(
+        content: str,
+        title: Optional[str] = None,
+        note_type: str = "general",
+        project_id: Optional[int] = None,
+        is_pinned: bool = False,
+        tags: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a quick note.
+
+        Args:
+            content: Note content
+            title: Note title
+            note_type: Type of note
+            project_id: Associated project ID
+            is_pinned: Pin this note
+            tags: Note tags
+
+        Returns:
+            Created note info
+        """
+        tags = tags or []
+
+        async with db.acquire() as conn:
+            row = await conn.fetchrow("""
+                INSERT INTO notes (content, title, note_type, project_id, is_pinned, tags, created_by)
+                VALUES ($1, $2, $3, $4, $5, $6, 'ai')
+                RETURNING id, title, note_type, created_at
+            """, content, title, note_type, project_id, is_pinned, tags)
+
+        return {
+            "success": True,
+            "note_id": row["id"],
+            "title": row["title"],
+            "note_type": row["note_type"],
+            "created_at": row["created_at"].isoformat(),
+            "message": "Note created successfully"
+        }
+
+    @staticmethod
+    async def note_search(
+        query: Optional[str] = None,
+        note_type: Optional[str] = None,
+        project_id: Optional[int] = None,
+        tags: Optional[List[str]] = None,
+        pinned_only: bool = False,
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Search notes.
+
+        Args:
+            query: Search query
+            note_type: Filter by note type
+            project_id: Filter by project
+            tags: Filter by tags
+            pinned_only: Only pinned notes
+            limit: Maximum results
+
+        Returns:
+            List of matching notes
+        """
+        async with db.acquire() as conn:
+            conditions = []
+            params = []
+            param_idx = 1
+
+            if query:
+                conditions.append(f"(content ILIKE ${param_idx} OR title ILIKE ${param_idx})")
+                params.append(f"%{query}%")
+                param_idx += 1
+
+            if note_type:
+                conditions.append(f"note_type = ${param_idx}")
+                params.append(note_type)
+                param_idx += 1
+
+            if project_id:
+                conditions.append(f"project_id = ${param_idx}")
+                params.append(project_id)
+                param_idx += 1
+
+            if tags:
+                conditions.append(f"tags && ${param_idx}")
+                params.append(tags)
+                param_idx += 1
+
+            if pinned_only:
+                conditions.append("is_pinned = true")
+
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
+            params.append(limit)
+
+            rows = await conn.fetch(f"""
+                SELECT id, content, title, note_type, project_id, is_pinned, tags, created_at
+                FROM notes
+                WHERE {where_clause}
+                ORDER BY is_pinned DESC, created_at DESC
+                LIMIT ${param_idx}
+            """, *params)
+
+            notes = []
+            for row in rows:
+                notes.append({
+                    "id": row["id"],
+                    "content": MCPTools._limit_response_size(row["content"], 1000)["content"],
+                    "title": row["title"],
+                    "note_type": row["note_type"],
+                    "project_id": row["project_id"],
+                    "is_pinned": row["is_pinned"],
+                    "tags": list(row["tags"]) if row["tags"] else [],
+                    "created_at": row["created_at"].isoformat()
+                })
+
+        return {
+            "success": True,
+            "count": len(notes),
+            "notes": notes
+        }
+
+    # ==================== TASK TOOLS ====================
+
+    @staticmethod
+    async def task_create(
+        project_id: int,
+        title: str,
+        description: Optional[str] = None,
+        priority: int = 5,
+        due_date: Optional[str] = None,
+        assigned_to: Optional[str] = None,
+        parent_task_id: Optional[int] = None,
+        tags: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new task within a project.
+
+        Args:
+            project_id: Project ID for this task
+            title: Task title
+            description: Detailed task description
+            priority: Priority 1-10
+            due_date: Due date (YYYY-MM-DD)
+            assigned_to: Assignee
+            parent_task_id: Parent task ID for subtasks
+            tags: Task tags
+
+        Returns:
+            Created task info
+        """
+        tags = tags or []
+
+        async with db.acquire() as conn:
+            row = await conn.fetchrow("""
+                INSERT INTO tasks (project_id, title, description, priority, due_date, assigned_to, parent_task_id, tags, created_by)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ai')
+                RETURNING id, title, status, priority, created_at
+            """, project_id, title, description, priority, due_date, assigned_to, parent_task_id, tags)
+
+        return {
+            "success": True,
+            "task_id": row["id"],
+            "title": row["title"],
+            "status": row["status"],
+            "priority": row["priority"],
+            "created_at": row["created_at"].isoformat(),
+            "message": f'Task "{title}" created'
+        }
+
+    @staticmethod
+    async def task_list(
+        project_id: Optional[int] = None,
+        status: Optional[str] = None,
+        assigned_to: Optional[str] = None,
+        include_subtasks: bool = True,
+        due_before: Optional[str] = None,
+        limit: int = 100
+    ) -> Dict[str, Any]:
+        """
+        List tasks with filters.
+
+        Args:
+            project_id: Filter by project
+            status: Filter by status
+            assigned_to: Filter by assignee
+            include_subtasks: Include subtasks
+            due_before: Filter tasks due before date
+            limit: Maximum results
+
+        Returns:
+            List of tasks
+        """
+        async with db.acquire() as conn:
+            conditions = []
+            params = []
+            param_idx = 1
+
+            if project_id:
+                conditions.append(f"t.project_id = ${param_idx}")
+                params.append(project_id)
+                param_idx += 1
+
+            if status:
+                conditions.append(f"t.status = ${param_idx}")
+                params.append(status)
+                param_idx += 1
+
+            if assigned_to:
+                conditions.append(f"t.assigned_to = ${param_idx}")
+                params.append(assigned_to)
+                param_idx += 1
+
+            if not include_subtasks:
+                conditions.append("t.parent_task_id IS NULL")
+
+            if due_before:
+                conditions.append(f"t.due_date <= ${param_idx}")
+                params.append(due_before)
+                param_idx += 1
+
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
+            params.append(limit)
+
+            rows = await conn.fetch(f"""
+                SELECT t.id, t.title, t.description, t.status, t.priority, t.due_date,
+                       t.assigned_to, t.parent_task_id, t.tags, t.created_at, p.name as project_name
+                FROM tasks t
+                LEFT JOIN projects p ON t.project_id = p.id
+                WHERE {where_clause}
+                ORDER BY t.priority DESC, t.due_date ASC NULLS LAST
+                LIMIT ${param_idx}
+            """, *params)
+
+            tasks = []
+            for row in rows:
+                tasks.append({
+                    "id": row["id"],
+                    "title": row["title"],
+                    "description": row["description"],
+                    "status": row["status"],
+                    "priority": row["priority"],
+                    "due_date": row["due_date"].isoformat() if row["due_date"] else None,
+                    "assigned_to": row["assigned_to"],
+                    "parent_task_id": row["parent_task_id"],
+                    "tags": list(row["tags"]) if row["tags"] else [],
+                    "project_name": row["project_name"],
+                    "created_at": row["created_at"].isoformat()
+                })
+
+        return {
+            "success": True,
+            "count": len(tasks),
+            "tasks": tasks
+        }
+
+    @staticmethod
+    async def task_update(
+        task_id: int,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        status: Optional[str] = None,
+        priority: Optional[int] = None,
+        due_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Update an existing task.
+
+        Args:
+            task_id: Task ID
+            title: New title
+            description: New description
+            status: New status
+            priority: New priority
+            due_date: New due date
+
+        Returns:
+            Update confirmation
+        """
+        async with db.acquire() as conn:
+            updates = []
+            params = []
+            param_idx = 1
+
+            if title is not None:
+                updates.append(f"title = ${param_idx}")
+                params.append(title)
+                param_idx += 1
+
+            if description is not None:
+                updates.append(f"description = ${param_idx}")
+                params.append(description)
+                param_idx += 1
+
+            if status is not None:
+                updates.append(f"status = ${param_idx}")
+                params.append(status)
+                param_idx += 1
+                if status == "completed":
+                    updates.append("completed_at = CURRENT_TIMESTAMP")
+
+            if priority is not None:
+                updates.append(f"priority = ${param_idx}")
+                params.append(priority)
+                param_idx += 1
+
+            if due_date is not None:
+                updates.append(f"due_date = ${param_idx}")
+                params.append(due_date)
+                param_idx += 1
+
+            if not updates:
+                return {"success": False, "error": "No updates provided"}
+
+            params.append(task_id)
+            result = await conn.execute(f"""
+                UPDATE tasks SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ${param_idx}
+            """, *params)
+
+            if result == "UPDATE 0":
+                return {"success": False, "error": f"Task {task_id} not found"}
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "message": f"Task {task_id} updated"
+        }
+
     # ==================== WEB SEARCH TOOL ====================
 
     @staticmethod
@@ -1320,6 +1720,225 @@ TOOL_DEFINITIONS = [
                     "description": "Include message history"
                 }
             }
+        }
+    },
+    {
+        "name": "conversation_log",
+        "description": "Log a conversation or message exchange. Use this to store interactions for later retrieval. Creates a new conversation if session_id doesn't exist.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "Session ID (auto-generated if not provided)"
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Conversation title"
+                },
+                "user_message": {
+                    "type": "string",
+                    "description": "The user message"
+                },
+                "assistant_response": {
+                    "type": "string",
+                    "description": "The assistant response"
+                },
+                "tool_calls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of tools called during response"
+                },
+                "client_name": {
+                    "type": "string",
+                    "description": "Client application name"
+                }
+            },
+            "required": ["user_message", "assistant_response"]
+        }
+    },
+    {
+        "name": "note_create",
+        "description": "Create a quick note. Notes can be associated with projects or conversations. Use for ideas, todos, questions, references, or general notes.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "Note content"
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Note title"
+                },
+                "note_type": {
+                    "type": "string",
+                    "enum": ["general", "idea", "todo", "question", "reference", "meeting", "research"],
+                    "description": "Type of note"
+                },
+                "project_id": {
+                    "type": "integer",
+                    "description": "Associated project ID"
+                },
+                "is_pinned": {
+                    "type": "boolean",
+                    "description": "Pin this note"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Note tags"
+                }
+            },
+            "required": ["content"]
+        }
+    },
+    {
+        "name": "note_search",
+        "description": "Search notes by content, type, or tags.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query"
+                },
+                "note_type": {
+                    "type": "string",
+                    "description": "Filter by note type"
+                },
+                "project_id": {
+                    "type": "integer",
+                    "description": "Filter by project"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by tags"
+                },
+                "pinned_only": {
+                    "type": "boolean",
+                    "description": "Only pinned notes"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum results"
+                }
+            }
+        }
+    },
+    {
+        "name": "task_create",
+        "description": "Create a new task within a project. Tasks can have subtasks and due dates.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "integer",
+                    "description": "Project ID for this task"
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Task title"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Detailed task description"
+                },
+                "priority": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10,
+                    "description": "Priority 1-10"
+                },
+                "due_date": {
+                    "type": "string",
+                    "description": "Due date (YYYY-MM-DD)"
+                },
+                "assigned_to": {
+                    "type": "string",
+                    "description": "Assignee"
+                },
+                "parent_task_id": {
+                    "type": "integer",
+                    "description": "Parent task ID for subtasks"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Task tags"
+                }
+            },
+            "required": ["project_id", "title"]
+        }
+    },
+    {
+        "name": "task_list",
+        "description": "List tasks with optional filters by project, status, or assignee.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "integer",
+                    "description": "Filter by project"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "in_progress", "completed", "cancelled"],
+                    "description": "Filter by status"
+                },
+                "assigned_to": {
+                    "type": "string",
+                    "description": "Filter by assignee"
+                },
+                "include_subtasks": {
+                    "type": "boolean",
+                    "description": "Include subtasks"
+                },
+                "due_before": {
+                    "type": "string",
+                    "description": "Filter tasks due before date"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum results"
+                }
+            }
+        }
+    },
+    {
+        "name": "task_update",
+        "description": "Update an existing task status, priority, or details.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "integer",
+                    "description": "Task ID"
+                },
+                "title": {
+                    "type": "string",
+                    "description": "New title"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "New description"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "in_progress", "completed", "cancelled"],
+                    "description": "New status"
+                },
+                "priority": {
+                    "type": "integer",
+                    "description": "New priority"
+                },
+                "due_date": {
+                    "type": "string",
+                    "description": "New due date"
+                }
+            },
+            "required": ["task_id"]
         }
     },
     {

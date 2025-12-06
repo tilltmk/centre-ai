@@ -103,6 +103,12 @@ class SecureMCPServer:
                 "who_am_i_talking_to": self.tools.who_am_i_talking_to,
                 "project_overview": self.tools.project_overview,
                 "conversation_overview": self.tools.conversation_overview,
+                "conversation_log": self.tools.conversation_log,
+                "note_create": self.tools.note_create,
+                "note_search": self.tools.note_search,
+                "task_create": self.tools.task_create,
+                "task_list": self.tools.task_list,
+                "task_update": self.tools.task_update,
                 "web_search": self.tools.web_search,
                 "get_knowledge_graph": self.tools.get_knowledge_graph
             }
@@ -569,6 +575,12 @@ def create_mcp_app() -> Starlette:
             "who_am_i_talking_to": tools.who_am_i_talking_to,
             "project_overview": tools.project_overview,
             "conversation_overview": tools.conversation_overview,
+            "conversation_log": tools.conversation_log,
+            "note_create": tools.note_create,
+            "note_search": tools.note_search,
+            "task_create": tools.task_create,
+            "task_list": tools.task_list,
+            "task_update": tools.task_update,
             "web_search": tools.web_search,
             "get_knowledge_graph": tools.get_knowledge_graph
         }
